@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARC Stick-Fighter Animation Engine — Stage 2: 27-Move Library</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="title-group">
+        <h1 class="app-title">ARC STICK-FIGHTER</h1>
+        <span class="badge-tag">STAGE 2: COMPLETE 27-MOVE LIBRARY</span>
+      </div>
+      <div class="header-actions">
+        <button id="btn-demo-reel" class="btn btn-combo" title="Watch continuous choreographed moveset demo">🎬 Demo Reel</button>
+        <button id="btn-joints-toggle" class="btn" title="Toggle Joint Circles on Skeleton">Skeleton Joints</button>
+        <button id="btn-theme-toggle" class="btn">☀️ Light Theme</button>
+      </div>
+    </header>
+
+    <!-- Canvas Preview -->
+    <main class="preview-layout">
+      <div class="canvas-container">
+        <canvas id="preview-canvas" width="800" height="450"></canvas>
+      </div>
+
+      <!-- Controls Panel -->
+      <section class="controls-panel">
+        <!-- Target Selection, Speed, Loop, Reaction -->
+        <div class="control-row wrap-row">
+          <div>
+            <div class="section-label">Target Fighter</div>
+            <div class="segmented-control">
+              <label class="segmented-option">
+                <input type="radio" name="target-fighter" id="target-fighter-a" value="A" checked>
+                <span class="segmented-label">Fighter A (Left)</span>
+              </label>
+              <label class="segmented-option">
+                <input type="radio" name="target-fighter" id="target-fighter-b" value="B">
+                <span class="segmented-label">Fighter B (Right)</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-label">Playback Speed (timeScale)</div>
+            <div class="control-row" style="gap: 6px;">
+              <button class="btn active" data-speed="1.0">1.0x</button>
+              <button class="btn" data-speed="0.5">0.5x</button>
+              <button class="btn" data-speed="0.25">0.25x</button>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-label">Playback Options</div>
+            <div class="control-row" style="gap: 8px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chk-loop-move">
+                <span>Loop Move</span>
+              </label>
+              <button id="btn-stop" class="btn btn-stop">■ Stop</button>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-label">Opponent Demo Reaction</div>
+            <select id="select-demo-reaction" class="select-input">
+              <option value="hurt" selected>Auto-React: Hurt</option>
+              <option value="block">Auto-React: Block</option>
+              <option value="off">Off (Idle)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Telemetry & Status Chips -->
+        <div class="telemetry-row">
+          <div class="stat-chip">
+            <span class="stat-label">Active Fighter</span>
+            <span id="status-fighter" class="stat-value">Fighter A</span>
+          </div>
+          <div class="stat-chip">
+            <span class="stat-label">Current Move</span>
+            <span id="status-move" class="stat-value">idle</span>
+          </div>
+          <div class="stat-chip">
+            <span class="stat-label">Speed / Joints</span>
+            <span class="stat-value"><span id="status-speed">1x</span> | <span id="status-joints">OFF</span></span>
+          </div>
+          <div class="stat-chip" style="grid-column: span 2;">
+            <span class="stat-label">Move Timing & Events</span>
+            <span id="status-duration" class="stat-value" style="font-size: 0.82rem;">1000 ms (idle breathing)</span>
+          </div>
+        </div>
+
+        <!-- 1. Basic Moves & Attacks -->
+        <div class="move-group">
+          <div class="section-label group-title">1. Basic Attacks & Attacks with Tell</div>
+          <div class="control-row move-buttons-row">
+            <button class="btn" data-move="idle">idle</button>
+            <button class="btn" data-move="slash">slash</button>
+            <button class="btn" data-move="hit_weak">hit_weak</button>
+            <button class="btn" data-move="hit_strong">hit_strong</button>
+            <button class="btn" data-move="combo_bonus">combo_bonus</button>
+            <button class="btn" data-move="counter_riposte">counter_riposte</button>
+            <button class="btn" data-move="attack_horizontal">attack_horizontal</button>
+            <button class="btn" data-move="attack_vertical">attack_vertical</button>
+            <button class="btn" data-move="feint">feint</button>
+          </div>
+        </div>
+
+        <!-- 2. Defense & Evasion -->
+        <div class="move-group">
+          <div class="section-label group-title">2. Defense & Evasion</div>
+          <div class="control-row move-buttons-row">
+            <button class="btn" data-move="block">block</button>
+            <button class="btn" data-move="duck">duck</button>
+            <button class="btn" data-move="parry">parry</button>
+            <button class="btn" data-move="sidestep_back">sidestep_back</button>
+            <button class="btn" data-move="sidestep_forward">sidestep_forward</button>
+            <button class="btn" data-move="jump">jump</button>
+          </div>
+        </div>
+
+        <!-- 3. Reactions & Knockdowns -->
+        <div class="move-group">
+          <div class="section-label group-title">3. Hit Reactions & Recovery</div>
+          <div class="control-row move-buttons-row">
+            <button class="btn" data-move="hurt_light">hurt_light</button>
+            <button class="btn" data-move="hurt_heavy">hurt_heavy</button>
+            <button class="btn" data-move="block_impact">block_impact</button>
+            <button class="btn" data-move="stumble">stumble</button>
+            <button class="btn" data-move="knockdown">knockdown</button>
+            <button class="btn" data-move="get_up">get_up</button>
+          </div>
+        </div>
+
+        <!-- 4. Specials -->
+        <div class="move-group">
+          <div class="section-label group-title">4. Special Moves</div>
+          <div class="control-row move-buttons-row">
+            <button class="btn btn-special" data-move="power_slash">power_slash</button>
+            <button class="btn btn-special" data-move="dash_lunge">dash_lunge</button>
+            <button class="btn btn-special" data-move="whirlwind">whirlwind</button>
+            <button class="btn btn-special" data-move="backflip_dodge">backflip_dodge</button>
+            <button class="btn btn-special" data-move="ground_smash">ground_smash</button>
+          </div>
+        </div>
+
+        <!-- 5. Charge & Celebrations -->
+        <div class="move-group">
+          <div class="section-label group-title">5. Charge & Celebrations</div>
+          <div class="control-row move-buttons-row">
+            <button class="btn" data-move="focus_charge">focus_charge</button>
+            <button class="btn" data-move="victory">victory</button>
+            <button class="btn" data-move="defeat">defeat</button>
+          </div>
+        </div>
+
+        <!-- Chain Tester -->
+        <div class="move-group">
+          <div class="section-label group-title">Chain Sequence Tester</div>
+          <div class="control-row">
+            <input type="text" id="chain-input" class="text-input chain-input" value="windup, slash, backflip_dodge, dash_lunge, victory">
+            <button id="btn-run-chain" class="btn btn-combo">Run Chain</button>
+          </div>
+        </div>
+
+        <!-- Event Log -->
+        <div>
+          <div class="section-label">Animation Event & Telemetry Log</div>
+          <div id="event-log" class="event-log-container"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Classic Script Tags in Strict Dependency Order -->
+  <script src="config.js"></script>
+  <script src="src/poses.js"></script>
+  <script src="src/moves.js"></script>
+  <script src="src/effects.js"></script>
+  <script src="src/fighter.js"></script>
+  <script src="src/animation.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stick-Fighting Game - Step 1: Canvas, Animation & Loopback Sync</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header / Top Bar -->
+    <header class="top-bar">
+      <div class="top-bar-section title-section">
+        <h1 class="app-title">STICK FIGHTER <span class="badge-module">MODULE 0</span></h1>
+      </div>
+
+      <div class="top-bar-section controls-section">
+        <!-- Transport Selector Dropdown -->
+        <div class="control-group">
+          <label for="transport-select">Transport</label>
+          <select id="transport-select" class="select-input">
+            <option value="loopback" selected>Loopback (Same Browser)</option>
+          </select>
+        </div>
+
+        <!-- Room Code Input -->
+        <div class="control-group">
+          <label for="room-input">Room</label>
+          <input type="text" id="room-input" class="text-input" value="fight-room-1" spellcheck="false" autocomplete="off" />
+        </div>
+
+        <!-- Connect / Disconnect Button -->
+        <button id="connect-btn" class="btn btn-disconnect">Disconnect</button>
+
+        <!-- Player Role Toggle -->
+        <div class="control-group role-toggle-group">
+          <label>Player Role</label>
+          <div class="segmented-control">
+            <label class="segmented-option">
+              <input type="radio" name="player-role" id="role-a" value="A" checked />
+              <span class="segmented-label">Fighter A (Left)</span>
+            </label>
+            <label class="segmented-option">
+              <input type="radio" name="player-role" id="role-b" value="B" />
+              <span class="segmented-label">Fighter B (Right)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Status Badge -->
+        <div class="control-group status-group">
+          <label>Status</label>
+          <span id="status-badge" class="badge badge-connected">CONNECTED</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Game Area -->
+    <main class="game-layout">
+      <!-- Arena & Controls -->
+      <section class="arena-section">
+        <div class="canvas-wrapper">
+          <canvas id="game-canvas" width="640" height="360"></canvas>
+        </div>
+
+        <!-- Action Controls Underneath -->
+        <div class="action-bar">
+          <button id="btn-slash" class="action-btn btn-slash" title="Hotkey: A (Fighter A) / J (Fighter B)">
+            <span class="key-badge">A</span>
+            <span class="action-text">Slash</span>
+          </button>
+          <button id="btn-block" class="action-btn btn-block" title="Hotkey: S (Fighter A) / K (Fighter B) (Hold to guard)">
+            <span class="key-badge">S</span>
+            <span class="action-text">Block</span>
+          </button>
+          <button id="btn-duck" class="action-btn btn-duck" title="Hotkey: D (Fighter A) / L (Fighter B) (Hold to crouch)">
+            <span class="key-badge">D</span>
+            <span class="action-text">Duck</span>
+          </button>
+          <button id="btn-special" class="action-btn btn-special" title="Hotkey: F (Fighter A) / ; (Fighter B)">
+            <span class="key-badge">F</span>
+            <span class="action-text">Special Slam</span>
+          </button>
+        </div>
+
+        <!-- Role-Independent Keyboard Legend -->
+        <div class="keyboard-instructions">
+          <div class="legend-fighter legend-fighter-a">
+            <strong class="legend-role">Fighter A:</strong>
+            <kbd>A</kbd> Slash &nbsp;
+            <kbd>S</kbd> Block &nbsp;
+            <kbd>D</kbd> Duck &nbsp;
+            <kbd>F</kbd> Special
+          </div>
+          <div class="legend-sep">|</div>
+          <div class="legend-fighter legend-fighter-b">
+            <strong class="legend-role">Fighter B:</strong>
+            <kbd>J</kbd> Slash &nbsp;
+            <kbd>K</kbd> Block &nbsp;
+            <kbd>L</kbd> Duck &nbsp;
+            <kbd>;</kbd> Special
+          </div>
+        </div>
+      </section>
+
+      <!-- Status & Latency Diagnostics Panel -->
+      <section class="diagnostics-panel">
+        <div class="panel-header">
+          <h2>Diagnostics & Network Telemetry</h2>
+          <div class="report-btn-wrapper">
+            <button id="copy-report-btn" class="btn btn-secondary">Copy Test Report</button>
+            <span id="copy-feedback" class="copy-feedback"></span>
+          </div>
+        </div>
+
+        <div class="diagnostics-grid">
+          <!-- Connection Metadata -->
+          <div class="diag-card">
+            <div class="card-label">Active Transport</div>
+            <div id="status-transport" class="card-value">Loopback (Same Browser)</div>
+            <div class="card-sub">Room: <strong id="status-room">fight-room-1</strong></div>
+          </div>
+
+          <!-- Latency Metrics -->
+          <div class="diag-card">
+            <div class="card-label">Latest RTT</div>
+            <div id="stat-rtt-latest" class="card-value value-metric">--</div>
+            <div class="card-sub">Min: <span id="stat-rtt-min">--</span> | Max: <span id="stat-rtt-max">--</span></div>
+          </div>
+
+          <div class="diag-card">
+            <div class="card-label">Avg RTT / Jitter</div>
+            <div class="card-value value-metric">
+              <span id="stat-rtt-avg">--</span>
+            </div>
+            <div class="card-sub">Jitter: <span id="stat-rtt-jitter">--</span></div>
+          </div>
+
+          <!-- Traffic Counters -->
+          <div class="diag-card">
+            <div class="card-label">Messages (Sent / Recv)</div>
+            <div class="card-value">
+              <span id="stat-msg-sent" class="counter-sent">0</span>
+              <span class="counter-divider">/</span>
+              <span id="stat-msg-recv" class="counter-recv">0</span>
+            </div>
+            <div class="card-sub">Periodic ping every 2.0s</div>
+          </div>
+        </div>
+
+        <!-- Scrolling Event Log -->
+        <div class="log-section">
+          <div class="log-header">
+            <h3>Event Log</h3>
+            <span class="log-sub">Live packet and combat resolution feed</span>
+          </div>
+          <div id="event-log" class="event-log-container"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Entry Script (ES Module) -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

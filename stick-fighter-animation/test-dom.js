@@ -62,10 +62,16 @@ const elementsMap = {
   'status-move': createMockElement('status-move'),
   'status-speed': createMockElement('status-speed'),
   'status-joints': createMockElement('status-joints'),
+  'status-pose': createMockElement('status-pose'),
+  'status-duration': createMockElement('status-duration'),
   'event-log': createMockElement('event-log'),
   'btn-theme-toggle': createMockElement('btn-theme-toggle', 'button'),
   'btn-joints-toggle': createMockElement('btn-joints-toggle', 'button'),
   'btn-stop': createMockElement('btn-stop', 'button'),
+  'btn-pause-toggle': createMockElement('btn-pause-toggle', 'button'),
+  'btn-step-frame': createMockElement('btn-step-frame', 'button'),
+  'btn-interrupt': createMockElement('btn-interrupt', 'button'),
+  'btn-clear-effects': createMockElement('btn-clear-effects', 'button'),
   'btn-chain': createMockElement('btn-chain', 'button'),
   'target-fighter-a': createMockElement('target-fighter-a', 'input'),
   'target-fighter-b': createMockElement('target-fighter-b', 'input')
@@ -159,6 +165,25 @@ if (!fighterA.showJoints) throw new Error('Joints toggle failed');
 speedButtons.find(b => b['data-speed'] === '0.5').click();
 console.log('Global timeScale after speed click:', context.timeScale);
 if (context.timeScale !== 0.5) throw new Error('Speed click failed');
+
+// Simulate clicking Pause toggle
+elementsMap['btn-pause-toggle'].click();
+console.log('Pause toggle text after click:', elementsMap['btn-pause-toggle'].textContent);
+if (elementsMap['btn-pause-toggle'].textContent !== '▶️ Resume') throw new Error('Pause button click failed');
+
+// Simulate clicking Step Frame button
+elementsMap['btn-step-frame'].click();
+console.log('Pose telemetry after step-frame:', elementsMap['status-pose'].textContent);
+if (!elementsMap['status-pose'].textContent.includes('dx:')) throw new Error('Step frame telemetry failed');
+
+// Simulate clicking Interrupt button
+elementsMap['btn-interrupt'].click();
+console.log('Active fighter move after interrupt click:', fighterA.currentMoveName);
+if (fighterA.currentMoveName !== 'hurt_light') throw new Error('Interrupt click failed');
+
+// Simulate clicking Reset FX button
+elementsMap['btn-clear-effects'].click();
+console.log('Reset FX button clicked cleanly');
 
 console.log('=== FULL DOM & MAIN.JS TEST PASSED! ===');
 process.exit(0);

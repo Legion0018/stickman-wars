@@ -124,6 +124,8 @@ f1.on('strike', (data) => {
   strikeFired = true;
   assert(data.strikeIndex === 0, 'Strike event has strikeIndex: 0');
   assert(data.tag === 'strike', 'Strike event has tag: "strike"');
+  assert(typeof data.elapsedMs === 'number', 'Strike event has elapsedMs');
+  assert(data.declaredMs === 180, 'Strike event has declaredMs: 180');
 });
 
 const slashReceipt = f1.play('slash');
@@ -186,6 +188,8 @@ let telegraphedDir = null;
 f2.on('tell', (data) => {
   tellFired = true;
   telegraphedDir = data.dir;
+  assert(data.declaredMs === 1500, 'Tell event has declaredMs: 1500');
+  assert(typeof data.elapsedMs === 'number', 'Tell event has elapsedMs');
 });
 
 f2.play('enemyAttack', { dir: 'pending', tellMs: 1500, windupMs: 2500 });

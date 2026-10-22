@@ -170,7 +170,11 @@ window.CF = window.CF || {};
         this._isWaitingForDir = false;
         if (!this._firedTell) {
           this._firedTell = true;
-          this.emit('tell', { dir: dir });
+          this.emit('tell', {
+            dir: dir,
+            elapsedMs: Math.round(this._elapsedMs),
+            declaredMs: (this._moveData && this._moveData.tellMs) || 2000
+          });
           CF.Effects.addFloatingText('TELL: ' + dir.toUpperCase(), this.x, this.groundY - 70, '#38BDF8');
         }
       }
@@ -311,7 +315,11 @@ window.CF = window.CF || {};
           // Direction is known, fire tell event
           if (!this._firedTell) {
             this._firedTell = true;
-            this.emit('tell', { dir: this._pendingDir || 'h' });
+            this.emit('tell', {
+              dir: this._pendingDir || 'h',
+              elapsedMs: Math.round(this._elapsedMs),
+              declaredMs: move.tellMs || 2000
+            });
             CF.Effects.addFloatingText('TELL: ' + (this._pendingDir || 'h').toUpperCase(), this.x, this.groundY - 70, '#38BDF8');
           }
         }
@@ -328,6 +336,8 @@ window.CF = window.CF || {};
           if (ev.name === 'strike') {
             const evData = Object.assign({}, ev.data);
             if (this._pendingDir) evData.dir = this._pendingDir;
+            evData.elapsedMs = Math.round(this._elapsedMs);
+            evData.declaredMs = (ev.t !== undefined) ? ev.t : this._strikeMs;
             this.emit('strike', evData);
 
             // Audio-visual combat feedback & hit-stop (Rule 4)
@@ -341,7 +351,11 @@ window.CF = window.CF || {};
           } else if (ev.name === 'tell') {
             if (!this._firedTell && this._pendingDir !== 'pending') {
               this._firedTell = true;
-              this.emit('tell', { dir: this._pendingDir || 'h' });
+              this.emit('tell', {
+                dir: this._pendingDir || 'h',
+                elapsedMs: Math.round(this._elapsedMs),
+                declaredMs: move.tellMs || ev.t || 2000
+              });
             }
           } else if (ev.name === 'parry') {
             this.emit('parry', ev.data);

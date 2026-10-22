@@ -26,8 +26,10 @@ window.CF = window.CF || {};
   const MAX_LOG_LINES = 50;
 
   function log(msg, type) {
-    const time = new Date().toLocaleTimeString().split(' ')[0] + '.' + (Date.now() % 1000);
-    logEntries.unshift({ time: time, msg: msg, type: type || 'info' });
+    const now = new Date();
+    const time = now.toLocaleTimeString().split(' ')[0] + '.' + String(Date.now() % 1000).padStart(3, '0');
+    const speed = playbackSpeed.toFixed(1) + 'x';
+    logEntries.unshift({ time: time, speed: speed, msg: msg, type: type || 'info' });
     if (logEntries.length > MAX_LOG_LINES) {
       logEntries.pop();
     }
@@ -43,13 +45,19 @@ window.CF = window.CF || {};
       if (e.type === 'tell') color = '#38BDF8';
       if (e.type === 'parry') color = '#A855F7';
       if (e.type === 'reaction') color = '#F59E0B';
-      return `<div class="log-row"><span class="log-time">[${e.time}]</span> <span style="color: ${color}">${e.msg}</span></div>`;
+      return `<div class="log-row"><span class="log-time">[${e.time} | ${e.speed}]</span> <span style="color: ${color}">${e.msg}</span></div>`;
     }).join('');
+  }
+
+  function formatMs(n) {
+    return Math.round(n).toLocaleString();
   }
 
   // --- Target Reaction Handler ---
   function handleAttackerStrike(data) {
-    log(`A: 'strike' event landed (index: ${data.strikeIndex}, tag: ${data.tag || 'strike'})`, 'strike');
+    const actual = (data && data.elapsedMs !== undefined ? data.elapsedMs : fighterA.currentMove().elapsedMs);
+    const declared = (data && data.declaredMs !== undefined ? data.declaredMs : (fighterA._strikeMs || 0));
+    log(`A: strike at ${formatMs(actual)} ms (declared ${formatMs(declared)}) [index: ${data.strikeIndex}, tag: ${data.tag || 'strike'}]`, 'strike');
 
     if (fighterB.hasShield) {
       log(`B: Shield absorbs hit!`, 'reaction');
@@ -92,7 +100,9 @@ window.CF = window.CF || {};
   }
 
   function handleAttackerTell(data) {
-    log(`A: 'tell' event telegraphed direction: [${data.dir.toUpperCase()}]`, 'tell');
+    const actual = (data && data.elapsedMs !== undefined ? data.elapsedMs : fighterA.currentMove().elapsedMs);
+    const declared = (data && data.declaredMs !== undefined ? data.declaredMs : 2000);
+    log(`A: tell [${data.dir.toUpperCase()}] at ${formatMs(actual)} ms (declared ${formatMs(declared)})`, 'tell');
 
     if (targetReactMode === 'auto') {
       if (data.dir === 'h') {
@@ -155,7 +165,11 @@ window.CF = window.CF || {};
     fighterA.on('shieldBreak', () => log(`A: shieldBreak event!`, 'strike'));
 
     // Wire Fighter B events
-    fighterB.on('strike', () => log(`B: strike event landed`, 'strike'));
+    fighterB.on('strike', (d) => {
+      const actual = (d && d.elapsedMs !== undefined ? d.elapsedMs : fighterB.currentMove().elapsedMs);
+      const declared = (d && d.declaredMs !== undefined ? d.declaredMs : (fighterB._strikeMs || 0));
+      log(`B: strike at ${formatMs(actual)} ms (declared ${formatMs(declared)})`, 'strike');
+    });
     fighterB.on('end', (d) => log(`B: move finished: ${d.move}`));
     fighterB.on('shieldBreak', () => log(`B: shieldBreak event!`, 'strike'));
 
@@ -281,6 +295,21 @@ window.CF = window.CF || {};
   function updateLiveReadout() {
     const aMove = fighterA.currentMove();
     const bMove = fighterB.currentMove();
+
+    // Lock speed slider while a move is playing (so timing tests are not affected mid-move)
+    const isMovePlaying = fighterA.isBusy() || fighterB.isBusy();
+    const speedSlider = document.getElementById('speedSlider');
+    const speedVal = document.getElementById('speedVal');
+    if (speedSlider) {
+      speedSlider.disabled = isMovePlaying;
+      if (isMovePlaying) {
+        speedSlider.title = 'Speed slider locked while move is playing';
+        if (speedVal) speedVal.textContent = playbackSpeed.toFixed(1) + 'x 🔒';
+      } else {
+        speedSlider.title = '';
+        if (speedVal) speedVal.textContent = playbackSpeed.toFixed(1) + 'x';
+      }
+    }
 
     const elA = document.getElementById('readoutA');
     if (elA) {

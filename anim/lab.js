@@ -18,6 +18,8 @@ window.CF = window.CF || {};
   let targetReactMode = 'auto'; // 'none', 'hit', 'block', 'parry', 'dodge', 'auto'
   let debugSkeleton = false;
   let silhouetteMode = false;
+  let dodgeDelayMs = 450;
+  let scheduledDodge = null;
 
   const LOGICAL_W = 640;
   const LOGICAL_H = 220;
@@ -86,16 +88,81 @@ window.CF = window.CF || {};
       log(`B: react('dodged')`, 'reaction');
     } else if (targetReactMode === 'auto') {
       const bMove = fighterB.currentMove();
+      const el = document.getElementById('dodgeCoverageReadout');
       if (bMove.name === 'block') {
         fighterB.react('blocked');
         log(`B: blocked attack successfully!`, 'reaction');
       } else if (bMove.tags.indexOf('dodge') !== -1) {
-        fighterB.react('dodged');
-        log(`B: dodged attack during ${bMove.name}!`, 'reaction');
+        // Hold window check: duck is 150-750ms, step is 150-300ms
+        const windowStart = 150;
+        const windowEnd = (bMove.name === 'duck') ? 750 : 300;
+        const inside = (bMove.elapsedMs >= windowStart && bMove.elapsedMs <= windowEnd);
+        if (inside) {
+          fighterB.react('dodged');
+          log(`B: dodged attack in hold window (${Math.round(bMove.elapsedMs)}ms)!`, 'reaction');
+          if (el) {
+            el.textContent = 'YES (DODGED)';
+            el.style.background = '#065F46';
+            el.style.color = '#34D399';
+          }
+        } else {
+          fighterB.react('hit');
+          log(`B: dodge window missed strike! Elapsed in dodge: ${Math.round(bMove.elapsedMs)}ms (window: ${windowStart}-${windowEnd}ms)`, 'strike');
+          if (el) {
+            el.textContent = 'NO (HIT)';
+            el.style.background = '#7F1D1D';
+            el.style.color = '#F87171';
+          }
+        }
       } else {
         fighterB.react('hit');
-        log(`B: caught undefended! react('hit')`, 'strike');
+        log(`B: caught undefended in ${bMove.name}! react('hit')`, 'strike');
+        if (el) {
+          el.textContent = 'NO (HIT)';
+          el.style.background = '#7F1D1D';
+          el.style.color = '#F87171';
+        }
       }
+    }
+  }
+
+  function computeDodgeCoverage() {
+    const isEnemyAttack = (fighterA && fighterA.currentMove().name === 'enemyAttack');
+    const tellMs = (isEnemyAttack && fighterA._tellMs) ? fighterA._tellMs : 2000;
+    const strikeMs = (isEnemyAttack && fighterA._strikeMs) ? fighterA._strikeMs : 3120;
+    const dir = (isEnemyAttack && fighterA._pendingDir) ? fighterA._pendingDir : 'h';
+    const dodgeMove = (dir === 'v') ? 'stepLeft' : 'duck';
+
+    const windowStart = 150;
+    const windowEnd = (dodgeMove === 'duck') ? 750 : 300;
+
+    const dodgeStart = tellMs + dodgeDelayMs;
+    const activeFrom = dodgeStart + windowStart;
+    const activeTo = dodgeStart + windowEnd;
+
+    const covers = (strikeMs >= activeFrom && strikeMs <= activeTo);
+    return {
+      covers: covers,
+      dodgeMove: dodgeMove,
+      dodgeStart: dodgeStart,
+      activeFrom: activeFrom,
+      activeTo: activeTo,
+      strikeMs: strikeMs
+    };
+  }
+
+  function updateDodgeCoverageUI() {
+    const el = document.getElementById('dodgeCoverageReadout');
+    if (!el) return;
+    const res = computeDodgeCoverage();
+    if (res.covers) {
+      el.textContent = 'YES';
+      el.style.background = '#065F46';
+      el.style.color = '#34D399';
+    } else {
+      el.textContent = 'NO';
+      el.style.background = '#7F1D1D';
+      el.style.color = '#F87171';
     }
   }
 
@@ -105,14 +172,21 @@ window.CF = window.CF || {};
     log(`A: tell [${data.dir.toUpperCase()}] at ${formatMs(actual)} ms (declared ${formatMs(declared)})`, 'tell');
 
     if (targetReactMode === 'auto') {
-      if (data.dir === 'h') {
-        log(`B: Auto-reacting to 'H' tell -> duck()`, 'tell');
-        fighterB.play('duck');
-      } else if (data.dir === 'v') {
-        log(`B: Auto-reacting to 'V' tell -> stepLeft()`, 'tell');
-        fighterB.play('stepLeft');
+      const dir = data.dir || 'h';
+      const dodgeMove = (dir === 'v') ? 'stepLeft' : 'duck';
+      if (dodgeDelayMs <= 0) {
+        log(`B: Auto-reacting immediately (+0ms) -> ${dodgeMove}()`, 'tell');
+        fighterB.play(dodgeMove);
+      } else {
+        scheduledDodge = {
+          move: dodgeMove,
+          triggerAtElapsed: fighterA._elapsedMs + dodgeDelayMs,
+          handled: false
+        };
+        log(`B: Auto-reaction scheduled in ${dodgeDelayMs}ms -> ${dodgeMove}()`, 'tell');
       }
     }
+    updateDodgeCoverageUI();
   }
 
   // --- Sharp Rendering Resizer (Rule 2) ---
@@ -203,6 +277,18 @@ window.CF = window.CF || {};
     CF.Effects.update(dtMs);
     if (!CF.Effects.isHitStopActive()) {
       fighterA.update(dtMs);
+
+      // Check scheduled auto-reaction dodge
+      if (scheduledDodge && !scheduledDodge.handled) {
+        if (fighterA.currentMove().name !== 'enemyAttack' && fighterA.currentMove().name !== 'feint') {
+          scheduledDodge.handled = true;
+        } else if (fighterA._elapsedMs >= scheduledDodge.triggerAtElapsed) {
+          scheduledDodge.handled = true;
+          fighterB.play(scheduledDodge.move);
+          log(`B: Delayed auto-reaction (+${dodgeDelayMs}ms) started -> ${scheduledDodge.move}()`, 'reaction');
+        }
+      }
+
       fighterB.update(dtMs);
     }
   }
@@ -375,10 +461,24 @@ window.CF = window.CF || {};
       resetBtn.addEventListener('click', () => {
         fighterA.reset();
         fighterB.reset();
+        scheduledDodge = null;
         CF.Effects.clear();
+        updateDodgeCoverageUI();
         log('Reset both fighters and arena effects.');
       });
     }
+
+    // Dodge Delay Slider
+    const dodgeDelaySlider = document.getElementById('dodgeDelaySlider');
+    const dodgeDelayVal = document.getElementById('dodgeDelayVal');
+    if (dodgeDelaySlider) {
+      dodgeDelaySlider.addEventListener('input', (e) => {
+        dodgeDelayMs = parseInt(e.target.value, 10);
+        if (dodgeDelayVal) dodgeDelayVal.textContent = dodgeDelayMs + ' ms';
+        updateDodgeCoverageUI();
+      });
+    }
+    updateDodgeCoverageUI();
 
     // Silhouette Mode Toggle (Rule 3)
     const silhouetteToggle = document.getElementById('silhouetteToggle');

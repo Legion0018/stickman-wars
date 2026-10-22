@@ -24,14 +24,14 @@ window.CF = window.CF || {};
       description: 'Neutral combat stance with subtle breathing'
     },
     stepLeft: {
-      totalMs: 320,
+      totalMs: 500,
       strikeMs: null,
       persistent: false,
       tags: ['dodge'],
       description: 'Quick sidestep to the left (evades vertical attacks)'
     },
     stepRight: {
-      totalMs: 320,
+      totalMs: 500,
       strikeMs: null,
       persistent: false,
       tags: ['dodge'],
@@ -45,14 +45,14 @@ window.CF = window.CF || {};
       description: 'Hop into the air (evades low attacks)'
     },
     duck: {
-      totalMs: 350,
+      totalMs: 900,
       strikeMs: null,
       persistent: false,
       tags: ['dodge'],
       description: 'Low crouch under attack (evades horizontal attacks)'
     },
     block: {
-      totalMs: 400,
+      totalMs: 900,
       strikeMs: null,
       persistent: false,
       tags: ['block'],
@@ -104,9 +104,9 @@ window.CF = window.CF || {};
     knockdown: {
       totalMs: 900,
       strikeMs: null,
-      persistent: false,
-      tags: ['reaction'],
-      description: 'Knocked flat to the ground from heavy hit'
+      persistent: true,
+      tags: ['reaction', 'persistent'],
+      description: 'Knocked flat to the ground from heavy hit (persistent until reset)'
     },
     victory: {
       totalMs: 800,
@@ -120,7 +120,7 @@ window.CF = window.CF || {};
       strikeMs: 3120,
       persistent: false,
       tags: ['attack'],
-      description: 'Telegraphed strike with neutral coil, visual tell and strike'
+      description: 'Telegraphed strike with neutral coil, visual tell and strike at 3120ms'
     },
     feint: {
       totalMs: 3400,
@@ -130,8 +130,8 @@ window.CF = window.CF || {};
       description: 'Deceptive attack with identical tell that cancels into a shrug'
     },
     special: {
-      totalMs: 1800,
-      strikeMs: 1200,
+      totalMs: 1500,
+      strikeMs: 1000,
       persistent: false,
       tags: ['attack', 'special'],
       description: 'Cinematic slam banner, deep charge, high leap, ground crash'
@@ -175,11 +175,48 @@ window.CF = window.CF || {};
   };
 
   /**
-   * CF.getMoveInfo(name)
-   * Exact CONTRACT.md specification:
+   * CF.getMoveInfo(name, opts)
+   * Exact CONTRACT.md specification with options support:
    * Returns {totalMs, strikeMs or strikeTimes[], persistent, tags}
    */
-  CF.getMoveInfo = function (name) {
+  CF.getMoveInfo = function (name, opts) {
+    opts = opts || {};
+    if (name === 'special') {
+      const tier = opts.tier || 'hard';
+      if (tier === 'easy') {
+        return { totalMs: 600, strikeMs: 350, persistent: false, tags: ['attack', 'special'] };
+      } else if (tier === 'medium') {
+        return { totalMs: 1100, strikeMs: 800, persistent: false, tags: ['attack', 'special'] };
+      } else {
+        // hard tier (default)
+        return { totalMs: 1500, strikeMs: 1000, persistent: false, tags: ['attack', 'special'] };
+      }
+    }
+    if (name === 'enemyAttack' && (opts.tier || opts.windupMs !== undefined || opts.tellMs !== undefined)) {
+      const built = buildEnemyAttack(opts);
+      return {
+        totalMs: built.totalMs,
+        strikeMs: built.strikeMs,
+        persistent: false,
+        tags: ['attack']
+      };
+    }
+    if (name === 'duck' && opts.holdMs !== undefined) {
+      return {
+        totalMs: 150 + opts.holdMs + 150,
+        strikeMs: null,
+        persistent: false,
+        tags: ['dodge']
+      };
+    }
+    if (name === 'block' && opts.holdMs !== undefined) {
+      return {
+        totalMs: 120 + opts.holdMs + 180,
+        strikeMs: null,
+        persistent: false,
+        tags: ['block']
+      };
+    }
     const info = MOVE_INFO[name];
     if (!info) {
       return {
@@ -323,17 +360,82 @@ window.CF = window.CF || {};
     };
   }
 
-  // Build keyframes for special move
+  // Build keyframes for special move supporting tier variants:
+  // easy: no leap, small spark, 600ms total, strike at 350ms
+  // medium: quick banner flash, 1100ms total, strike at 800ms
+  // hard (default): full slam banner, 1500ms total, strike at 1000ms
   function buildSpecial(opts) {
-    const bannerMs = 400;
-    const chargeMs = 300;
-    const leapMs = 300;
-    const slamMs = 200;
-    const impactTime = bannerMs + chargeMs + leapMs + slamMs; // 1200ms
-    const pauseMs = 60;
-    const recoverMs = 240;
-    const returnMs = 300;
-    const totalMs = impactTime + pauseMs + recoverMs + returnMs; // 1800ms
+    opts = opts || {};
+    const tier = opts.tier || 'hard';
+
+    if (tier === 'easy') {
+      const impactTime = 350;
+      const totalMs = 600;
+      const keyframes = [
+        { t: 0, pose: P.specialCharge, ease: 'easeOut' },
+        { t: 250, pose: P.specialCharge, ease: 'easeIn' },
+        { t: impactTime, pose: P.specialSlam, ease: 'easeOut' },
+        { t: 410, pose: P.specialSlam, ease: 'linear' }, // pause
+        { t: totalMs, pose: P.idle, ease: 'easeOut' }
+      ];
+      const events = [
+        { t: impactTime, name: 'strike', data: { strikeIndex: 0, tag: 'slam', tier: 'easy' } }
+      ];
+      return {
+        name: 'special',
+        tags: ['attack', 'special'],
+        totalMs: totalMs,
+        strikeMs: impactTime,
+        tier: tier,
+        keyframes: keyframes,
+        events: events
+      };
+    }
+
+    if (tier === 'medium') {
+      const bannerMs = 200;
+      const chargeMs = 250;
+      const leapMs = 250;
+      const slamMs = 100;
+      const impactTime = bannerMs + chargeMs + leapMs + slamMs; // 800ms
+      const pauseMs = 60;
+      const recoverMs = 240;
+      const totalMs = 1100; // 800 + 60 + 240 = 1100ms
+
+      const keyframes = [
+        { t: 0, pose: P.specialCharge, ease: 'easeOut' },
+        { t: bannerMs, pose: P.specialCharge, ease: 'linear' },
+        { t: bannerMs + chargeMs, pose: P.specialCharge, ease: 'easeIn' },
+        { t: bannerMs + chargeMs + leapMs, pose: P.specialLeap, ease: 'easeOut' },
+        { t: impactTime, pose: P.specialSlam, ease: 'easeIn' },
+        { t: impactTime + pauseMs, pose: P.specialSlam, ease: 'linear' },
+        { t: impactTime + pauseMs + recoverMs, pose: P.specialRecover, ease: 'easeOut' },
+        { t: totalMs, pose: P.idle, ease: 'easeOut' }
+      ];
+      const events = [
+        { t: 0, name: 'banner', data: { text: 'SPECIAL SLAM', subtext: 'MEDIUM TIER' } },
+        { t: impactTime, name: 'strike', data: { strikeIndex: 0, tag: 'slam', tier: 'medium' } }
+      ];
+      return {
+        name: 'special',
+        tags: ['attack', 'special'],
+        totalMs: totalMs,
+        strikeMs: impactTime,
+        tier: tier,
+        keyframes: keyframes,
+        events: events
+      };
+    }
+
+    // Default: 'hard' tier
+    const bannerMs = 300;
+    const chargeMs = 350;
+    const leapMs = 250;
+    const slamMs = 100;
+    const impactTime = bannerMs + chargeMs + leapMs + slamMs; // 1000ms
+    const pauseMs = 100;
+    const recoverMs = 400;
+    const totalMs = 1500; // 1000 + 100 + 400 = 1500ms
 
     const keyframes = [
       { t: 0, pose: P.specialCharge, ease: 'easeOut' },
@@ -341,14 +443,14 @@ window.CF = window.CF || {};
       { t: bannerMs + chargeMs, pose: P.specialCharge, ease: 'easeIn' },
       { t: bannerMs + chargeMs + leapMs, pose: P.specialLeap, ease: 'easeOut' },
       { t: impactTime, pose: P.specialSlam, ease: 'easeIn' },
-      { t: impactTime + pauseMs, pose: P.specialSlam, ease: 'linear' }, // Contact pause
+      { t: impactTime + pauseMs, pose: P.specialSlam, ease: 'linear' }, // Heavy contact pause
       { t: impactTime + pauseMs + recoverMs, pose: P.specialRecover, ease: 'easeOut' },
       { t: totalMs, pose: P.idle, ease: 'easeOut' }
     ];
 
     const events = [
       { t: 0, name: 'banner', data: { text: 'SPECIAL SLAM', subtext: 'CRITICAL IMPACT' } },
-      { t: impactTime, name: 'strike', data: { strikeIndex: 0, tag: 'slam' } }
+      { t: impactTime, name: 'strike', data: { strikeIndex: 0, tag: 'slam', tier: 'hard' } }
     ];
 
     return {
@@ -356,6 +458,7 @@ window.CF = window.CF || {};
       tags: ['attack', 'special'],
       totalMs: totalMs,
       strikeMs: impactTime,
+      tier: tier,
       keyframes: keyframes,
       events: events
     };
@@ -387,32 +490,32 @@ window.CF = window.CF || {};
     stepLeft: {
       name: 'stepLeft',
       tags: ['dodge'],
-      totalMs: 320,
+      totalMs: 500,
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 80, pose: P.stepLeftOut, ease: 'easeOut' },   // Fast displacement (80ms)
-        { t: 220, pose: P.stepLeftOut, ease: 'linear' },   // Hold window
-        { t: 320, pose: P.idle, ease: 'easeOut' }          // Slower recovery
+        { t: 150, pose: P.stepLeftOut, ease: 'easeOut' },  // Slide out 46px in 150ms
+        { t: 300, pose: P.stepLeftOut, ease: 'linear' },   // Hold window: 150-300ms
+        { t: 500, pose: P.idle, ease: 'easeOut' }          // Return in 200ms
       ],
       events: [
-        { t: 80, name: 'dust', data: { count: 3 } }
+        { t: 150, name: 'dust', data: { count: 3 } }
       ]
     },
 
     stepRight: {
       name: 'stepRight',
       tags: ['dodge'],
-      totalMs: 320,
+      totalMs: 500,
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 80, pose: P.stepRightOut, ease: 'easeOut' },  // Fast displacement (80ms)
-        { t: 220, pose: P.stepRightOut, ease: 'linear' },  // Hold window
-        { t: 320, pose: P.idle, ease: 'easeOut' }          // Slower recovery
+        { t: 150, pose: P.stepRightOut, ease: 'easeOut' }, // Slide out 46px in 150ms
+        { t: 300, pose: P.stepRightOut, ease: 'linear' },  // Hold window: 150-300ms
+        { t: 500, pose: P.idle, ease: 'easeOut' }          // Return in 200ms
       ],
       events: [
-        { t: 80, name: 'dust', data: { count: 3 } }
+        { t: 150, name: 'dust', data: { count: 3 } }
       ]
     },
 
@@ -438,13 +541,13 @@ window.CF = window.CF || {};
     duck: {
       name: 'duck',
       tags: ['dodge'],
-      totalMs: 350,
+      totalMs: 900,
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 70, pose: P.duck, ease: 'easeOut' },   // Snappy drop beneath attacks (70ms)
-        { t: 250, pose: P.duck, ease: 'linear' },   // Safe hold window
-        { t: 350, pose: P.idle, ease: 'easeOut' }   // Slower rise
+        { t: 150, pose: P.duck, ease: 'easeOut' },  // 150ms down
+        { t: 750, pose: P.duck, ease: 'linear' },   // 600ms hold window (150-750ms)
+        { t: 900, pose: P.idle, ease: 'easeOut' }   // 150ms up
       ],
       events: []
     },
@@ -452,13 +555,13 @@ window.CF = window.CF || {};
     block: {
       name: 'block',
       tags: ['block'],
-      totalMs: 400,
+      totalMs: 900,
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 70, pose: P.block, ease: 'easeOut' },   // Instant sword guard snap (70ms)
-        { t: 310, pose: P.block, ease: 'linear' },   // Solid guard hold window
-        { t: 400, pose: P.idle, ease: 'easeOut' }    // Slower lowering
+        { t: 120, pose: P.block, ease: 'easeOut' },  // 120ms in
+        { t: 720, pose: P.block, ease: 'linear' },   // 600ms hold window (120-720ms)
+        { t: 900, pose: P.idle, ease: 'easeOut' }    // 180ms recovery
       ],
       events: []
     },
@@ -597,15 +700,16 @@ window.CF = window.CF || {};
 
     knockdown: {
       name: 'knockdown',
-      tags: ['reaction'],
+      tags: ['reaction', 'persistent'],
       totalMs: 900,
       strikeMs: null,
+      persistent: true,
+      loop: false,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeIn' },
         { t: 240, pose: P.knockdownFall, ease: 'easeIn' },
         { t: 500, pose: P.knockdownFlat, ease: 'linear' },
-        { t: 750, pose: P.duck, ease: 'easeOut' },
-        { t: 900, pose: P.idle, ease: 'easeOut' }
+        { t: 900, pose: P.knockdownFlat, ease: 'linear' }
       ],
       events: [
         { t: 480, name: 'dust', data: { count: 5 } }
@@ -733,6 +837,7 @@ window.CF = window.CF || {};
    * Helper to retrieve or build a playable move object given options
    */
   CF.resolveMove = function (name, opts) {
+    opts = opts || {};
     if (name === 'enemyAttack') {
       return buildEnemyAttack(opts);
     }
@@ -741,6 +846,38 @@ window.CF = window.CF || {};
     }
     if (name === 'special') {
       return buildSpecial(opts);
+    }
+    if (name === 'duck' && opts.holdMs !== undefined) {
+      const hold = opts.holdMs;
+      return {
+        name: 'duck',
+        tags: ['dodge'],
+        totalMs: 150 + hold + 150,
+        strikeMs: null,
+        keyframes: [
+          { t: 0, pose: P.idle, ease: 'easeOut' },
+          { t: 150, pose: P.duck, ease: 'easeOut' },
+          { t: 150 + hold, pose: P.duck, ease: 'linear' },
+          { t: 300 + hold, pose: P.idle, ease: 'easeOut' }
+        ],
+        events: []
+      };
+    }
+    if (name === 'block' && opts.holdMs !== undefined) {
+      const hold = opts.holdMs;
+      return {
+        name: 'block',
+        tags: ['block'],
+        totalMs: 120 + hold + 180,
+        strikeMs: null,
+        keyframes: [
+          { t: 0, pose: P.idle, ease: 'easeOut' },
+          { t: 120, pose: P.block, ease: 'easeOut' },
+          { t: 120 + hold, pose: P.block, ease: 'linear' },
+          { t: 300 + hold, pose: P.idle, ease: 'easeOut' }
+        ],
+        events: []
+      };
     }
     if (MOVES[name]) {
       return MOVES[name];

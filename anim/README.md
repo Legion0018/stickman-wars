@@ -39,21 +39,21 @@ Every move from `shared/CONTRACT.md` is registered in `CF.getMoveInfo(name)`:
 | Move Name | Total Duration (`totalMs`) | Strike Time (`strikeMs`) | Tags | Persistent / Loops | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **`idle`** | 1200 ms | — | `persistent` | Yes (Loops) | Combat stance with rhythmic idle breathing |
-| **`stepLeft`** | 320 ms | — | `dodge` | No | Quick sidestep backward (evades vertical attacks) |
-| **`stepRight`** | 320 ms | — | `dodge` | No | Quick sidestep forward (evades vertical attacks) |
+| **`stepLeft`** | 500 ms | — | `dodge` | No | Quick sidestep backward (evades vertical attacks; hold window: 150–300ms) |
+| **`stepRight`** | 500 ms | — | `dodge` | No | Quick sidestep forward (evades vertical attacks; hold window: 150–300ms) |
 | **`jump`** | 550 ms | — | `dodge` | No | Hop into the air (evades low attacks) |
-| **`duck`** | 350 ms | — | `dodge` | No | Deep crouch beneath horizontal strikes |
-| **`block`** | 400 ms | — | `block` | No | Vertical sword guard across chest |
+| **`duck`** | 900 ms | — | `dodge` | No | Deep crouch beneath horizontal strikes (hold window: 150–750ms) |
+| **`block`** | 900 ms | — | `block` | No | Vertical sword guard across chest (hold window: 120–720ms) |
 | **`slash`** | 400 ms | 180 ms | `attack` | No | Fast horizontal slash with 70ms strike action |
 | **`hurt`** | 350 ms | — | `reaction` | No | Instant violent flinch and recoil (60ms) |
-| **`enemyAttack`** | 3450 ms *(default)* | 3120 ms | `attack` | No | Neutral coil pose, visual tell, and delayed strike |
+| **`enemyAttack`** | 3450 ms *(default)* | 3120 ms | `attack` | No | Neutral coil pose, visual tell, and delayed strike at 3120ms |
 | **`feint`** | 3400 ms *(default)* | — *(None)* | `attack` | No | Identical tell that cancels into a shrug; never strikes |
-| **`special`** | 1800 ms | 1200 ms | `attack`, `special` | No | Cinematic slam banner, deep charge, leap, and ground slam |
+| **`special`** | 1500 ms *(hard)* | 1000 ms | `attack`, `special` | No | Cinematic slam banner, leap, and ground slam (easy: 600ms/350ms, med: 1100ms/800ms) |
 | **`weakSlash`** | 300 ms | 130 ms | `attack` | No | Fast, low-damage quick jab slash (60ms action) |
 | **`strongSlash`**| 600 ms | 320 ms | `attack` | No | Heavy power strike with long windup and contact pause |
 | **`comboHeavy`** | 900 ms | 200, 480, 750 ms | `attack` | No | Three-hit relentless heavy combination |
 | **`stumble`** | 650 ms | — | `reaction` | No | Off-balance stagger recovery from blocked/parried hit |
-| **`knockdown`** | 900 ms | — | `reaction` | No | Knocked flat onto the ground |
+| **`knockdown`** | 900 ms | — | `reaction`, `persistent` | Yes (Holds) | Knocked flat onto the ground (persistent until reset) |
 | **`victory`** | 800 ms | — | `persistent` | Yes (Holds) | Celebratory jump and sword salute |
 | **`riposte`** | 700 ms | 420 ms | `attack`, `block` | No | Defensive parry followed by 360° counter spin |
 | **`spinSlash`** | 650 ms | 180, 360, 520 ms | `attack` | No | Triple full-body 360° airborne spin slice |

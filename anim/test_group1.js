@@ -232,18 +232,31 @@ assert(feintTellFired === true, 'Feint emits tell event');
 f3.update(2500);
 assert(feintStrikeFired === false, 'Feint NEVER emits a strike event');
 
-// 9. Test Special Attack (Special Slam)
+// 9. Test Special Attack (Special Slam with Tier Variants)
 const f4 = new CF.Fighter({ x: 200, facing: 1 });
 let slamStrikeFired = false;
 f4.on('strike', (data) => {
   slamStrikeFired = true;
   assert(data.tag === 'slam', 'Special attack strike has tag: "slam"');
 });
-const specialReceipt = f4.play('special');
-assert(specialReceipt.totalMs === 1800, 'Special attack totalMs is 1800ms');
-assert(specialReceipt.strikeMs === 1200, 'Special attack strikeMs is 1200ms');
 
-f4.update(1250);
+const specialEasy = CF.getMoveInfo('special', { tier: 'easy' });
+assert(specialEasy.totalMs === 600, 'Special easy totalMs is 600ms');
+assert(specialEasy.strikeMs === 350, 'Special easy strikeMs is 350ms');
+
+const specialMed = CF.getMoveInfo('special', { tier: 'medium' });
+assert(specialMed.totalMs === 1100, 'Special medium totalMs is 1100ms');
+assert(specialMed.strikeMs === 800, 'Special medium strikeMs is 800ms');
+
+const specialHard = CF.getMoveInfo('special', { tier: 'hard' });
+assert(specialHard.totalMs === 1500, 'Special hard totalMs is 1500ms');
+assert(specialHard.strikeMs === 1000, 'Special hard strikeMs is 1000ms');
+
+const specialReceipt = f4.play('special');
+assert(specialReceipt.totalMs === 1500, 'Special attack totalMs is 1500ms');
+assert(specialReceipt.strikeMs === 1000, 'Special attack strikeMs is 1000ms');
+
+f4.update(1050);
 assert(slamStrikeFired === true, 'Special slam strike fired at impact');
 
 // 10. Test Addendum 4: f.react('hit') alias

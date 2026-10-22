@@ -526,6 +526,19 @@
           </div>
         </div>
 
+        <!-- Dodge Delay Slider & Strike Coverage Readout -->
+        <div style="display: flex; flex-direction: column; gap: 6px; background: #0B1120; border: 1px solid #1E293B; border-radius: var(--radius); padding: 8px 10px;">
+          <div class="slider-control" style="justify-content: space-between;">
+            <span style="font-size: 0.76rem; color: #94A3B8;">Auto Dodge Delay (post-tell):</span>
+            <input type="range" id="dodgeDelaySlider" min="0" max="1000" step="25" value="450" style="flex: 1; margin: 0 10px;">
+            <span id="dodgeDelayVal" style="min-width: 50px; text-align: right; font-family: var(--font-mono); font-size: 0.78rem;">450 ms</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+            <span style="color: #CBD5E1; font-weight: 500;">Dodge window covers strike:</span>
+            <span id="dodgeCoverageReadout" class="badge" style="font-family: var(--font-mono); font-weight: 700; background: #065F46; color: #34D399; font-size: 0.78rem;">YES</span>
+          </div>
+        </div>
+
         <div class="readout-box">
           <div class="readout-col" id="readoutA"></div>
           <div class="readout-col" id="readoutB"></div>

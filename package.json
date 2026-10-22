@@ -1,0 +1,26 @@
+{
+  "name": "stickman-wars",
+  "version": "1.0.0",
+  "description": "Stickman Wars - Stick-fighting game with local loopback and cross-device WebSocket networking",
+  "main": "config.js",
+  "scripts": {
+    "test": "node test-controls.js",
+    "test:network": "node test-websocket.js",
+    "relay": "node server/relay.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Legion0018/stickman-wars.git"
+  },
+  "keywords": [
+    "stickman",
+    "fighting-game",
+    "websocket",
+    "canvas"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

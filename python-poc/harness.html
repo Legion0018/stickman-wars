@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stickman Wars — Python Special Attack Proof of Concept</title>
+  <style>
+    :root {
+      --bg-dark: #0f131a;
+      --card-bg: #1a202c;
+      --card-border: #2d3748;
+      --accent-orange: #ef9f27;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+      --accent-cyan: #38bdf8;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-poc { background: #3b82f6; color: #fff; }
+    .badge-status { background: #334155; color: #cbd5e1; }
+    .badge-ready { background: #065f46; color: #34d399; }
+    .badge-loading { background: #854d0e; color: #fde047; }
+    .badge-running { background: #1e40af; color: #93c5fd; }
+    .badge-error { background: #991b1b; color: #fca5a5; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--accent-orange);
+    }
+
+    .description {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .preset-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .btn {
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+    }
+
+    .btn-secondary {
+      background: #334155;
+      color: #e2e8f0;
+      border: 1px solid #475569;
+    }
+    .btn-secondary:hover { background: #475569; }
+
+    .btn-primary {
+      background: var(--accent-orange);
+      color: #0f131a;
+      font-size: 14px;
+      padding: 10px 20px;
+    }
+    .btn-primary:hover { background: #f59e0b; }
+
+    .btn-auto {
+      background: #0284c7;
+      color: #fff;
+    }
+    .btn-auto:hover { background: #0369a1; }
+
+    textarea.code-editor {
+      width: 100%;
+      height: 180px;
+      background: #0b0f17;
+      color: #e2e8f0;
+      font-family: "Consolas", "Monaco", "Courier New", monospace;
+      font-size: 14px;
+      padding: 14px;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      resize: vertical;
+      outline: none;
+      line-height: 1.4;
+      tab-size: 4;
+    }
+
+    textarea.code-editor:focus {
+      border-color: var(--accent-orange);
+    }
+
+    .actions-bar {
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Unlock Banner */
+    .unlock-banner {
+      border-radius: 6px;
+      padding: 14px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .unlock-banner.unlocked {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid var(--accent-green);
+      color: var(--accent-green);
+    }
+    .unlock-banner.locked {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid var(--accent-red);
+      color: #fca5a5;
+    }
+    .unlock-banner.suite-pass {
+      background: rgba(14, 165, 233, 0.15);
+      border: 1px solid var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    /* Tables */
+    table.test-cases {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    table.test-cases th, table.test-cases td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid #2d3748;
+    }
+    table.test-cases th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .chip-pass {
+      color: var(--accent-green);
+      font-weight: 700;
+    }
+    .chip-fail {
+      color: var(--accent-red);
+      font-weight: 700;
+    }
+    .chip-pending {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* Diagnostics Log */
+    .log-box {
+      background: #0b0f17;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #cbd5e1;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+
+    .notice {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>STICKMAN WARS <span class="badge badge-poc">Python PoC</span></h1>
+        <p style="font-size: 12px; color: var(--text-muted);">Isolated Web Worker Pyodide Validation Proof</p>
+      </div>
+      <div>
+        <span id="runtime-badge" class="badge badge-status">INITIALIZING...</span>
+      </div>
+    </header>
+
+    <!-- Mission / Challenge Card -->
+    <section class="card">
+      <h2>Beginner Challenge: Fix the Special Attack Function</h2>
+      <p class="description">
+        In this coding exercise, you are fixing a syntax bug in the function <code>special_attack(power, energy)</code>.<br>
+        <strong>Requirement:</strong> If <code>energy &gt;= 10</code>, return <code>power * 2</code>. Otherwise return <code>0</code>.
+      </p>
+
+      <div class="preset-group">
+        <button class="btn btn-secondary" id="btn-preset-starter">1. Starter (Broken Syntax)</button>
+        <button class="btn btn-secondary" id="btn-preset-correct">2. Correct Solution</button>
+        <button class="btn btn-secondary" id="btn-preset-logic">3. Logic Error (Adds instead of doubles)</button>
+        <button class="btn btn-secondary" id="btn-preset-runtime">4. Runtime Error (Undefined variable)</button>
+        <button class="btn btn-secondary" id="btn-preset-loop">5. Infinite Loop (Timeout Test)</button>
+      </div>
+
+      <textarea id="code-editor" class="code-editor" spellcheck="false"></textarea>
+
+      <div class="actions-bar">
+        <div>
+          <button id="btn-run" class="btn btn-primary">Run Python Code</button>
+          <button id="btn-run-all" class="btn btn-auto" style="margin-left: 8px;">Run Automated Test Suite (All 5 Presets)</button>
+        </div>
+        <span id="exec-time" style="font-size: 12px; color: var(--text-muted);"></span>
+      </div>
+    </section>
+
+    <!-- Automated Suite Results Card (Visible when running suite) -->
+    <section class="card" id="suite-card" style="display: none;">
+      <h2>Automated Test Suite Verification (All 5 Presets)</h2>
+      <table class="test-cases">
+        <thead>
+          <tr>
+            <th>Test Preset</th>
+            <th>Expected Behavior</th>
+            <th>Actual Diagnostic</th>
+            <th>Test Status</th>
+          </tr>
+        </thead>
+        <tbody id="suite-table-body">
+          <tr id="suite-row-0">
+            <td>1. Starter Code</td>
+            <td>Expected Rejection (SyntaxError missing colon)</td>
+            <td id="suite-diag-0">--</td>
+            <td id="suite-stat-0" class="chip-pending">PENDING</td>
+          </tr>
+          <tr id="suite-row-1">
+            <td>2. Logic Error</td>
+            <td>Expected Rejection (AssertionError on power+2)</td>
+            <td id="suite-diag-1">--</td>
+            <td id="suite-stat-1" class="chip-pending">PENDING</td>
+          </tr>
+          <tr id="suite-row-2">
+            <td>3. Runtime Error</td>
+            <td>Expected Rejection (NameError undefined variable)</td>
+            <td id="suite-diag-2">--</td>
+            <td id="suite-stat-2" class="chip-pending">PENDING</td>
+          </tr>
+          <tr id="suite-row-3">
+            <td>4. Correct Solution</td>
+            <td>Expected Pass (All 3 cases & Action Unlocked)</td>
+            <td id="suite-diag-3">--</td>
+            <td id="suite-stat-3" class="chip-pending">PENDING</td>
+          </tr>
+          <tr id="suite-row-4">
+            <td>5. Infinite Loop</td>
+            <td>Expected Rejection (Watchdog Timeout & Worker Recovery)</td>
+            <td id="suite-diag-4">--</td>
+            <td id="suite-stat-4" class="chip-pending">PENDING</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Unlock Result Card -->
+    <section class="card">
+      <h2>Validation Results & Action Unlock Contract</h2>
+      
+      <div id="unlock-banner" class="unlock-banner locked">
+        <span id="unlock-text">[SUBMISSION REJECTED] Code must pass all unit tests to unlock Special Slam.</span>
+        <span id="action-chip" style="font-size: 11px; opacity: 0.85;">Trigger: None</span>
+      </div>
+
+      <table class="test-cases">
+        <thead>
+          <tr>
+            <th>Test Input</th>
+            <th>Expected</th>
+            <th>Actual Output</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="test-table-body">
+          <tr>
+            <td><code>special_attack(8, 12)</code></td>
+            <td>16</td>
+            <td id="act-1">--</td>
+            <td id="stat-1" class="chip-pending">PENDING</td>
+          </tr>
+          <tr>
+            <td><code>special_attack(8, 5)</code></td>
+            <td>0</td>
+            <td id="act-2">--</td>
+            <td id="stat-2" class="chip-pending">PENDING</td>
+          </tr>
+          <tr>
+            <td><code>special_attack(0, 12)</code></td>
+            <td>0</td>
+            <td id="act-3">--</td>
+            <td id="stat-3" class="chip-pending">PENDING</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;">Diagnostic Output Log</h3>
+      <div id="diagnostic-log" class="log-box">Ready to evaluate Python submissions.</div>
+
+      <p class="notice">
+        <strong>Security & Authority Notice:</strong> Python executes inside an isolated Web Worker via WebAssembly. The code runner has zero authority over player damage, HP, or canvas rendering. Passing simply emits the standard action signal <code>{ action: 'special', unlocked: true }</code>.
+      </p>
+    </section>
+  </div>
+
+  <script type="module">
+    import { PythonSpecialAttackRunner } from './runner.js';
+
+    // Code Presets
+    const PRESETS = {
+      starter: `def special_attack(power, energy):
+    if energy >= 10
+        return power * 2
+    return 0`,
+      correct: `def special_attack(power, energy):
+    if energy >= 10:
+        return power * 2
+    return 0`,
+      logic: `def special_attack(power, energy):
+    if energy >= 10:
+        return power + 2  # Logic error: addition instead of multiplication
+    return 0`,
+      runtime: `def special_attack(power, energy):
+    if energy >= 10:
+        return power * multiplier  # NameError: multiplier is undefined
+    return 0`,
+      loop: `def special_attack(power, energy):
+    # Simulated infinite loop
+    while True:
+        pass
+    return power * 2`
+    };
+
+    const editor = document.getElementById('code-editor');
+    const btnRun = document.getElementById('btn-run');
+    const btnRunAll = document.getElementById('btn-run-all');
+    const runtimeBadge = document.getElementById('runtime-badge');
+    const unlockBanner = document.getElementById('unlock-banner');
+    const unlockText = document.getElementById('unlock-text');
+    const actionChip = document.getElementById('action-chip');
+    const execTime = document.getElementById('exec-time');
+    const logBox = document.getElementById('diagnostic-log');
+    const suiteCard = document.getElementById('suite-card');
+
+    // Preset buttons
+    document.getElementById('btn-preset-starter').addEventListener('click', () => loadPreset('starter'));
+    document.getElementById('btn-preset-correct').addEventListener('click', () => loadPreset('correct'));
+    document.getElementById('btn-preset-logic').addEventListener('click', () => loadPreset('logic'));
+    document.getElementById('btn-preset-runtime').addEventListener('click', () => loadPreset('runtime'));
+    document.getElementById('btn-preset-loop').addEventListener('click', () => loadPreset('loop'));
+
+    function loadPreset(key) {
+      editor.value = PRESETS[key] || '';
+      log(`Loaded preset: ${key}`);
+    }
+
+    function log(msg) {
+      const ts = new Date().toLocaleTimeString();
+      logBox.textContent = `[${ts}] ${msg}\n` + logBox.textContent;
+    }
+
+    // Initialize Runner
+    const runner = new PythonSpecialAttackRunner({
+      workerUrl: './worker.js',
+      timeoutMs: 3000
+    });
+
+    runner.onStatus((status, message) => {
+      runtimeBadge.textContent = status.toUpperCase();
+      runtimeBadge.className = `badge badge-${status}`;
+      if (message) log(`[Runner Status] ${status}: ${message}`);
+      btnRun.disabled = (status === 'loading' || status === 'running');
+    });
+
+    // Initial starter code
+    loadPreset('starter');
+
+    // Execute submission manually
+    btnRun.addEventListener('click', async () => {
+      const code = editor.value;
+      await executeCode(code, { logSubmission: true });
+    });
+
+    async function executeCode(code, options = {}) {
+      btnRun.disabled = true;
+      execTime.textContent = 'Executing...';
+      const start = performance.now();
+
+      try {
+        const result = await runner.runCode(code);
+        const elapsed = Math.round(performance.now() - start);
+        execTime.textContent = `Completed in ${elapsed}ms`;
+
+        renderResult(result, options.logSubmission);
+        return result;
+      } catch (err) {
+        log(`Worker error: ${err.message}`);
+        const errResult = {
+          passed: false,
+          unlocked: false,
+          error_type: 'ExecutionError',
+          error_message: err.message,
+          details: []
+        };
+        renderResult(errResult, options.logSubmission);
+        return errResult;
+      } finally {
+        btnRun.disabled = false;
+      }
+    }
+
+    function renderResult(res, logSubmission = false) {
+      if (res.unlocked && res.passed) {
+        unlockBanner.className = 'unlock-banner unlocked';
+        unlockText.textContent = '[ACTION UNLOCKED: SPECIAL SLAM] All 3 test cases passed!';
+        actionChip.textContent = `Signal: { action: '${res.action}', unlocked: true }`;
+        if (logSubmission) {
+          log(`[Submission Accepted] Challenge passed! Action unlocked: ${res.action}`);
+        }
+      } else {
+        unlockBanner.className = 'unlock-banner locked';
+        const errDesc = res.error_message || 'Assertion failure';
+        unlockText.textContent = `[ACTION LOCKED] ${res.error_type || 'Rejected'}: ${errDesc}`;
+        actionChip.textContent = 'Trigger: None';
+        if (logSubmission) {
+          log(`[Submission Rejected] ${res.error_type || 'Error'}: ${errDesc}`);
+        }
+      }
+
+      // Update test cases table
+      const details = res.details || [];
+      for (let i = 0; i < 3; i++) {
+        const d = details[i];
+        const actCell = document.getElementById(`act-${i + 1}`);
+        const statCell = document.getElementById(`stat-${i + 1}`);
+
+        if (d) {
+          actCell.textContent = (d.actual !== null && d.actual !== undefined) ? d.actual : (d.error || 'N/A');
+          if (d.passed) {
+            statCell.textContent = 'PASS';
+            statCell.className = 'chip-pass';
+          } else {
+            statCell.textContent = 'FAIL';
+            statCell.className = 'chip-fail';
+          }
+        } else {
+          actCell.textContent = res.error_type ? 'Error' : '--';
+          statCell.textContent = res.error_type ? 'FAIL' : 'PENDING';
+          statCell.className = res.error_type ? 'chip-fail' : 'chip-pending';
+        }
+      }
+    }
+
+    // Automated Test Suite for All 5 Presets
+    btnRunAll.addEventListener('click', async () => {
+      btnRunAll.disabled = true;
+      btnRun.disabled = true;
+      suiteCard.style.display = 'block';
+
+      // Reset suite rows to pending
+      for (let i = 0; i < 5; i++) {
+        document.getElementById(`suite-diag-${i}`).textContent = 'Running...';
+        document.getElementById(`suite-stat-${i}`).textContent = 'RUNNING';
+        document.getElementById(`suite-stat-${i}`).className = 'chip-pending';
+      }
+
+      log('=== STARTING AUTOMATED TEST SUITE (ALL 5 PRESETS) ===');
+
+      const suite = [
+        {
+          name: '1. Starter Code (Missing Colon)',
+          preset: 'starter',
+          expectPass: false,
+          expectError: 'SyntaxError',
+          desc: 'Expected Rejection (SyntaxError missing colon)'
+        },
+        {
+          name: '2. Logic Error (power + 2)',
+          preset: 'logic',
+          expectPass: false,
+          expectError: 'AssertionError',
+          desc: 'Expected Rejection (AssertionError on incorrect math)'
+        },
+        {
+          name: '3. Runtime Error (Undefined variable)',
+          preset: 'runtime',
+          expectPass: false,
+          expectError: 'NameError',
+          desc: 'Expected Rejection (NameError on undefined multiplier)'
+        },
+        {
+          name: '4. Correct Solution (if energy >= 10:)',
+          preset: 'correct',
+          expectPass: true,
+          expectError: null,
+          desc: 'Expected Pass (3/3 assertions & Action Unlocked)'
+        },
+        {
+          name: '5. Infinite Loop Timeout (while True)',
+          preset: 'loop',
+          expectPass: false,
+          expectError: 'TimeoutError',
+          desc: 'Expected Rejection (Watchdog Timeout & Worker Recovery)'
+        },
+      ];
+
+      let passedCount = 0;
+
+      for (let i = 0; i < suite.length; i++) {
+        const t = suite[i];
+        loadPreset(t.preset);
+        const res = await executeCode(PRESETS[t.preset], { logSubmission: false });
+
+        let testPassed = false;
+        let diagMessage = '';
+
+        if (t.expectPass) {
+          if (res && res.passed && res.unlocked) {
+            testPassed = true;
+            diagMessage = 'All 3 unit assertions passed -> Special Slam unlocked';
+          } else {
+            diagMessage = `Expected pass, but rejected: ${res ? res.error_type : 'unknown'}`;
+          }
+        } else {
+          // Expected rejection
+          if (res && !res.passed) {
+            if (!t.expectError || (res.error_type && res.error_type.includes(t.expectError))) {
+              testPassed = true;
+              diagMessage = `Correctly caught ${res.error_type}: ${(res.error_message || '').split('\n')[0]}`;
+            } else {
+              diagMessage = `Expected error ${t.expectError}, but got ${res.error_type}`;
+            }
+          } else {
+            diagMessage = 'Expected rejection, but submission unexpectedly passed!';
+          }
+        }
+
+        const diagCell = document.getElementById(`suite-diag-${i}`);
+        const statCell = document.getElementById(`suite-stat-${i}`);
+
+        diagCell.textContent = diagMessage;
+
+        if (testPassed) {
+          passedCount++;
+          statCell.textContent = 'PASSED';
+          statCell.className = 'chip-pass';
+          log(`[TEST ${i + 1}/5 PASSED] ${t.name}: ${diagMessage}`);
+        } else {
+          statCell.textContent = 'FAILED';
+          statCell.className = 'chip-fail';
+          log(`[TEST ${i + 1}/5 FAILED] ${t.name}: ${diagMessage}`);
+        }
+
+        await new Promise(r => setTimeout(r, 400));
+      }
+
+      // Bonus recovery check: verify that after infinite loop, a subsequent submission runs cleanly
+      log('--- Verifying worker post-timeout re-execution ---');
+      loadPreset('correct');
+      const recoveryRes = await executeCode(PRESETS.correct, { logSubmission: false });
+      const recoveryPassed = Boolean(recoveryRes && recoveryRes.passed && recoveryRes.unlocked);
+
+      if (recoveryPassed) {
+        log('[RECOVERY VERIFIED] Subsequent submission executed successfully on fresh worker!');
+      } else {
+        log('[RECOVERY FAILED] Fresh worker failed to execute subsequent submission.');
+      }
+
+      if (passedCount === suite.length && recoveryPassed) {
+        unlockBanner.className = 'unlock-banner suite-pass';
+        unlockText.textContent = `[SUITE SUCCESS: 5/5 TESTS PASSED] All 3 expected rejections, timeout recovery, and correct solution verified!`;
+        actionChip.textContent = 'Suite: 5/5 Passed';
+        log(`=== AUTOMATED TEST SUITE: ALL 5 PRESET TESTS PASSED (100% SUCCESS) ===`);
+      } else {
+        unlockBanner.className = 'unlock-banner locked';
+        unlockText.textContent = `[SUITE INCOMPLETE] ${passedCount}/${suite.length} tests passed. Check diagnostic log.`;
+        actionChip.textContent = `Suite: ${passedCount}/${suite.length}`;
+        log(`=== AUTOMATED TEST SUITE: ${passedCount}/${suite.length} TESTS PASSED ===`);
+      }
+
+      btnRunAll.disabled = false;
+      btnRun.disabled = false;
+    });
+  </script>
+</body>
+</html>

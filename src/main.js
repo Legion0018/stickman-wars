@@ -8,7 +8,14 @@
 import { CONFIG } from '../config.js';
 import { Fighter } from './fighter.js';
 import { LoopbackTransport } from './loopback-transport.js';
+import { WebSocketTransport } from './websocket-transport.js';
 import { StatusPanel } from './status-panel.js';
+import {
+  isLocalOrLanHost,
+  resolveWebSocketUrl,
+  resolveDefaultTransport,
+  parseStartupParams,
+} from './net-helpers.js';
 
 // DOM Elements
 const canvas = document.getElementById('game-canvas');
@@ -56,10 +63,29 @@ let pingSeq = 0;
 let pingIntervalId = null;
 
 // Initialize Transport
-let transport = new LoopbackTransport();
-statusPanel.setTransportName("Loopback (Same Browser)");
-statusPanel.setRoomCode(currentRoom);
-statusPanel.setPlayerRole(localRole === 'A' ? "Fighter A (Left)" : "Fighter B (Right)");
+let transport = null;
+
+function initTransport(type) {
+  const chosenType = type || resolveDefaultTransport();
+  if (transport) {
+    disconnectRoom();
+  }
+
+  if (chosenType === 'websocket') {
+    const wsUrl = resolveWebSocketUrl();
+    transport = new WebSocketTransport(wsUrl);
+    statusPanel.setTransportName(`WebSocket Relay (${wsUrl})`);
+  } else {
+    transport = new LoopbackTransport();
+    statusPanel.setTransportName("Loopback (Same Browser)");
+  }
+
+  statusPanel.setRoomCode(currentRoom);
+  statusPanel.setPlayerRole(localRole === 'A' ? "Fighter A (Left)" : "Fighter B (Right)");
+
+  transport.onMessage(handleTransportMessage);
+  transport.onStatus(handleTransportStatus);
+}
 
 /**
  * Combat Strike Resolution Callback
@@ -76,11 +102,31 @@ function handleStrikeLand(attacker, target) {
  * Send an action message through transport
  * @param {'slash'|'block'|'duck'|'hurt'|'special'} actionName 
  * @param {'A'|'B'} [senderRole=localRole]
+ * @param {boolean} [isHold=false]
  */
-function broadcastAction(actionName, senderRole = localRole) {
+function broadcastAction(actionName, senderRole = localRole, isHold = false) {
   if (!isConnected) return;
   const msg = {
     t: 'action',
+    v: 1,
+    a: actionName,
+    sender: senderRole,
+    hold: Boolean(isHold),
+    ts: performance.now(),
+  };
+  transport.send(msg);
+  statusPanel.incrementSent();
+}
+
+/**
+ * Send a release message through transport for held actions
+ * @param {'block'|'duck'} actionName
+ * @param {'A'|'B'} [senderRole=localRole]
+ */
+function broadcastRelease(actionName, senderRole = localRole) {
+  if (!isConnected) return;
+  const msg = {
+    t: 'release',
     v: 1,
     a: actionName,
     sender: senderRole,
@@ -94,8 +140,9 @@ function broadcastAction(actionName, senderRole = localRole) {
  * Execute action for a specific fighter (role-independent)
  * @param {'A'|'B'} targetRole
  * @param {'slash'|'block'|'duck'|'special'} actionName 
+ * @param {boolean} [isHold=false]
  */
-function triggerFighterAction(targetRole, actionName) {
+function triggerFighterAction(targetRole, actionName, isHold = false) {
   const actor = targetRole === 'A' ? fighterA : fighterB;
   const opponent = targetRole === 'A' ? fighterB : fighterA;
 
@@ -106,21 +153,33 @@ function triggerFighterAction(targetRole, actionName) {
 
   if (actionName === 'special') {
     actor.playSpecialSlam(() => handleStrikeLand(actor, opponent));
-    broadcastAction('special', targetRole);
+    broadcastAction('special', targetRole, false);
     statusPanel.log(`Fighter ${targetRole} executed SPECIAL SLAM`, 'action');
   } else if (actionName === 'slash') {
     actor.playMove('slash', () => handleStrikeLand(actor, opponent));
-    broadcastAction('slash', targetRole);
+    broadcastAction('slash', targetRole, false);
     statusPanel.log(`Fighter ${targetRole} triggered slash`, 'action');
   } else if (actionName === 'block') {
     actor.playMove('block');
-    broadcastAction('block', targetRole);
-    statusPanel.log(`Fighter ${targetRole} blocked`, 'action');
+    broadcastAction('block', targetRole, isHold);
+    statusPanel.log(`Fighter ${targetRole} blocked${isHold ? ' (holding)' : ''}`, 'action');
   } else if (actionName === 'duck') {
     actor.playMove('duck');
-    broadcastAction('duck', targetRole);
-    statusPanel.log(`Fighter ${targetRole} ducked`, 'action');
+    broadcastAction('duck', targetRole, isHold);
+    statusPanel.log(`Fighter ${targetRole} ducked${isHold ? ' (holding)' : ''}`, 'action');
   }
+}
+
+/**
+ * Release a held action for a specific fighter (role-independent)
+ * @param {'A'|'B'} targetRole
+ * @param {'block'|'duck'} actionName
+ */
+function releaseFighterAction(targetRole, actionName) {
+  const actor = targetRole === 'A' ? fighterA : fighterB;
+  actor.setHolding(actionName, false);
+  broadcastRelease(actionName, targetRole);
+  statusPanel.log(`Fighter ${targetRole} released ${actionName}`, 'action');
 }
 
 /**
@@ -264,6 +323,10 @@ function handleTransportMessage(msg) {
       const actor = msg.sender === 'A' ? fighterA : fighterB;
       const target = msg.sender === 'A' ? fighterB : fighterA;
 
+      if (msg.hold !== undefined && (msg.a === 'block' || msg.a === 'duck')) {
+        actor.setHolding(msg.a, Boolean(msg.hold));
+      }
+
       if (msg.a === 'special') {
         actor.playSpecialSlam(() => handleStrikeLand(actor, target));
         statusPanel.log(`[Remote] Fighter ${msg.sender} executed SPECIAL SLAM`, 'action');
@@ -272,14 +335,36 @@ function handleTransportMessage(msg) {
         statusPanel.log(`[Remote] Fighter ${msg.sender} initiated slash`, 'action');
       } else if (msg.a === 'block') {
         actor.playMove('block');
-        statusPanel.log(`[Remote] Fighter ${msg.sender} blocked`, 'action');
+        statusPanel.log(`[Remote] Fighter ${msg.sender} blocked${msg.hold ? ' (holding)' : ''}`, 'action');
       } else if (msg.a === 'duck') {
         actor.playMove('duck');
-        statusPanel.log(`[Remote] Fighter ${msg.sender} ducked`, 'action');
+        statusPanel.log(`[Remote] Fighter ${msg.sender} ducked${msg.hold ? ' (holding)' : ''}`, 'action');
       } else if (msg.a === 'hurt') {
         actor.playMove('hurt');
         statusPanel.log(`[Remote] Fighter ${msg.sender} played hurt`, 'action');
       }
+      break;
+    }
+
+    case 'release': {
+      if (msg.sender === localRole) {
+        return;
+      }
+
+      const actor = msg.sender === 'A' ? fighterA : fighterB;
+      if (msg.a === 'block' || msg.a === 'duck') {
+        actor.setHolding(msg.a, false);
+        statusPanel.log(`[Remote] Fighter ${msg.sender} released ${msg.a}`, 'action');
+      }
+      break;
+    }
+
+    case 'leave': {
+      statusPanel.log(`Peer departed room (Fighter ${msg.role || 'Unknown'})`, 'net');
+      fighterA.setHolding('block', false);
+      fighterA.setHolding('duck', false);
+      fighterB.setHolding('block', false);
+      fighterB.setHolding('duck', false);
       break;
     }
 
@@ -354,39 +439,26 @@ function connectRoom(roomCode) {
  * Disconnect from room
  */
 function disconnectRoom() {
+  if (isConnected) {
+    try {
+      transport.send({ t: 'leave', v: 1, role: localRole });
+      statusPanel.incrementSent();
+    } catch (_) {}
+  }
+  fighterA.setHolding('block', false);
+  fighterA.setHolding('duck', false);
+  fighterB.setHolding('block', false);
+  fighterB.setHolding('duck', false);
   transport.close();
 }
-
-// Attach Transport Listeners
-transport.onMessage(handleTransportMessage);
-transport.onStatus(handleTransportStatus);
-
-// Auto-connect to default room
-connectRoom(currentRoom);
-
-// UI Event Listeners
-connectBtn.addEventListener('click', () => {
-  if (isConnected) {
-    disconnectRoom();
-  } else {
-    connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
-  }
-});
-
-roomInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
-  }
-});
 
 // Role Switch
 function setRole(role) {
   localRole = role;
   statusPanel.setPlayerRole(role === 'A' ? "Fighter A (Left)" : "Fighter B (Right)");
-  if (role === 'A') {
-    roleSelectA.checked = true;
-  } else {
-    roleSelectB.checked = true;
+  if (roleSelectA && roleSelectB) {
+    roleSelectA.checked = (role === 'A');
+    roleSelectB.checked = (role === 'B');
   }
   updateActionButtonsUI();
   statusPanel.log(`Switched local role to Fighter ${role}`, 'info');
@@ -397,15 +469,67 @@ function setRole(role) {
   }
 }
 
-roleSelectA.addEventListener('change', () => {
-  if (roleSelectA.checked) setRole('A');
-});
-roleSelectB.addEventListener('change', () => {
-  if (roleSelectB.checked) setRole('B');
-});
+if (roleSelectA) {
+  roleSelectA.addEventListener('change', () => {
+    if (roleSelectA.checked) setRole('A');
+  });
+}
+if (roleSelectB) {
+  roleSelectB.addEventListener('change', () => {
+    if (roleSelectB.checked) setRole('B');
+  });
+}
 
-// Initialize action buttons UI according to default role
-updateActionButtonsUI();
+// Transport Selector Change
+if (transportSelect) {
+  transportSelect.addEventListener('change', () => {
+    initTransport(transportSelect.value);
+    connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
+  });
+}
+
+// UI Event Listeners for Connect Button & Room Input
+if (connectBtn) {
+  connectBtn.addEventListener('click', () => {
+    if (isConnected) {
+      disconnectRoom();
+    } else {
+      connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
+    }
+  });
+}
+
+if (roomInput) {
+  roomInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
+    }
+  });
+}
+
+// Parse startup URL parameters (?role=, ?room=, ?transport=, ?relay=)
+const startupParams = parseStartupParams();
+
+if (startupParams.room) {
+  currentRoom = startupParams.room;
+  if (roomInput) {
+    roomInput.value = currentRoom;
+  }
+}
+
+// Set initial player role (query param ?role=A or ?role=B, default 'A')
+const initialRole = startupParams.role || 'A';
+setRole(initialRole);
+
+// Determine initial transport (defaults to 'websocket' on public/HTTPS origin, 'loopback' locally)
+const initialTransportType = startupParams.transport || resolveDefaultTransport();
+if (transportSelect) {
+  transportSelect.value = initialTransportType;
+}
+
+// Initial transport setup and auto-connect
+initTransport(initialTransportType);
+connectRoom(currentRoom);
 
 // Action Buttons: trigger actions for currently selected player role
 btnSlash.addEventListener('click', () => triggerFighterAction(localRole, 'slash'));
@@ -415,18 +539,18 @@ btnSpecial.addEventListener('click', () => triggerFighterAction(localRole, 'spec
 btnBlock.addEventListener('mousedown', () => {
   const localFighter = localRole === 'A' ? fighterA : fighterB;
   localFighter.setHolding('block', true);
-  triggerFighterAction(localRole, 'block');
+  triggerFighterAction(localRole, 'block', true);
 });
 btnDuck.addEventListener('mousedown', () => {
   const localFighter = localRole === 'A' ? fighterA : fighterB;
   localFighter.setHolding('duck', true);
-  triggerFighterAction(localRole, 'duck');
+  triggerFighterAction(localRole, 'duck', true);
 });
 window.addEventListener('mouseup', () => {
-  fighterA.setHolding('block', false);
-  fighterA.setHolding('duck', false);
-  fighterB.setHolding('block', false);
-  fighterB.setHolding('duck', false);
+  if (fighterA.isHoldingBlock) releaseFighterAction('A', 'block');
+  if (fighterA.isHoldingDuck) releaseFighterAction('A', 'duck');
+  if (fighterB.isHoldingBlock) releaseFighterAction('B', 'block');
+  if (fighterB.isHoldingDuck) releaseFighterAction('B', 'duck');
 });
 
 // Role-Independent Keyboard Controls:
@@ -459,7 +583,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  triggerFighterAction(mapped.role, mapped.action);
+  triggerFighterAction(mapped.role, mapped.action, mapped.hold);
 });
 
 window.addEventListener('keyup', (e) => {
@@ -471,19 +595,26 @@ window.addEventListener('keyup', (e) => {
   const keyId = `${mapped.role}-${mapped.action}`;
   activeKeys.delete(keyId);
 
-  const targetFighter = mapped.role === 'A' ? fighterA : fighterB;
   if (mapped.hold) {
-    targetFighter.setHolding(mapped.action, false);
+    releaseFighterAction(mapped.role, mapped.action);
   }
 });
 
 // Clear active keys when window loses focus to prevent stuck keys
 window.addEventListener('blur', () => {
   activeKeys.clear();
-  fighterA.setHolding('block', false);
-  fighterA.setHolding('duck', false);
-  fighterB.setHolding('block', false);
-  fighterB.setHolding('duck', false);
+  if (fighterA.isHoldingBlock) releaseFighterAction('A', 'block');
+  if (fighterA.isHoldingDuck) releaseFighterAction('A', 'duck');
+  if (fighterB.isHoldingBlock) releaseFighterAction('B', 'block');
+  if (fighterB.isHoldingDuck) releaseFighterAction('B', 'duck');
+});
+
+window.addEventListener('beforeunload', () => {
+  if (isConnected) {
+    try {
+      transport.send({ t: 'leave', v: 1, role: localRole });
+    } catch (_) {}
+  }
 });
 
 /**
@@ -577,3 +708,10 @@ requestAnimationFrame((time) => {
   lastTime = time;
   animate(time);
 });
+
+export {
+  isLocalOrLanHost,
+  resolveWebSocketUrl,
+  resolveDefaultTransport,
+  parseStartupParams,
+};

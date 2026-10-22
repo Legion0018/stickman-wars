@@ -27,23 +27,23 @@ window.CF = window.CF || {};
     // -------------------------------------------------------------------------
     // 2. DEFENCE & DODGES
     // -------------------------------------------------------------------------
-    // Sidestep left (backward away from opponent) - clearly displaced (dx: -65)
+    // Sidestep left (backward away from opponent) - athletic weight catch (dx: -65)
     stepLeftOut: {
-      lean: -8, drop: 4,
-      au: 40, al: 110, sw: 150,
-      bau: -25, bal: 25,
-      flu: 25, fll: 8,
-      blu: -35, bll: -10,
+      lean: -12, drop: 6,
+      au: 35, al: 105, sw: 145,
+      bau: -35, bal: 15,
+      flu: 28, fll: 10,
+      blu: -44, bll: -14,
       dx: -65, dy: 0, rot: 0, airborne: false
     },
 
-    // Sidestep right (forward toward opponent) - clearly displaced (dx: +65)
+    // Sidestep right (forward toward opponent) - aggressive drive into space (dx: +65)
     stepRightOut: {
-      lean: 12, drop: 4,
-      au: 48, al: 118, sw: 158,
-      bau: -15, bal: 35,
-      flu: 42, fll: 12,
-      blu: -20, bll: -5,
+      lean: 16, drop: 6,
+      au: 55, al: 125, sw: 165,
+      bau: -20, bal: 40,
+      flu: 50, fll: 16,
+      blu: -26, bll: -8,
       dx: 65, dy: 0, rot: 0, airborne: false
     },
 
@@ -81,13 +81,13 @@ window.CF = window.CF || {};
       dx: 0, dy: 0, rot: 0, airborne: false
     },
 
-    // Duck (deep crouch beneath horizontal strikes - drop: 24, head deeply lowered)
+    // Duck (deep crouch beneath horizontal strikes - drop: 28, wide stable compression)
     duck: {
-      lean: 32, drop: 24,
-      au: 40, al: 95, sw: 140,
-      bau: -20, bal: 25,
-      flu: 75, fll: 8,
-      blu: -65, bll: -10,
+      lean: 36, drop: 28,
+      au: 35, al: 90, sw: 135,
+      bau: -15, bal: 30,
+      flu: 80, fll: 12,
+      blu: -70, bll: -14,
       dx: 8, dy: 0, rot: 0, airborne: false
     },
 
@@ -113,59 +113,60 @@ window.CF = window.CF || {};
     // 3. BASIC ATTACK & REACTIONS
     // -------------------------------------------------------------------------
     // Slash:
-    // windup = lean back ~12 deg, weight on back leg, sword up and behind head
+    // windup = strong anticipation: lean back ~16 deg, weight on back leg, sword cocked high (sw: 210)
     slashWindup: {
-      lean: -12, drop: 2,
-      au: 145, al: 165, sw: 195,
-      bau: -35, bal: 10,
-      flu: 18, fll: 5,
-      blu: -26, bll: -8,
-      dx: -6, dy: 0, rot: 0, airborne: false
+      lean: -16, drop: 4,
+      au: 155, al: 175, sw: 210,
+      bau: -45, bal: -10,
+      flu: 22, fll: 6,
+      blu: -30, bll: -12,
+      dx: -10, dy: 0, rot: 0, airborne: false
     },
-    // strike = lean forward ~25 deg, front leg lunges, sword sweeps to forward-horizontal
+    // strike = explosive full-body lunge: lean forward ~28 deg, front leg lunges, horizontal sword arc
     slashStrike: {
-      lean: 25, drop: 8,
-      au: 92, al: 88, sw: 88,
-      bau: -40, bal: -20,
-      flu: 55, fll: 12,
-      blu: -35, bll: -8,
-      dx: 22, dy: 0, rot: 0, airborne: false
+      lean: 28, drop: 10,
+      au: 95, al: 90, sw: 85,
+      bau: -55, bal: -30,
+      flu: 62, fll: 14,
+      blu: -40, bll: -10,
+      dx: 28, dy: 0, rot: 0, airborne: false
     },
-    // overshoot = subtle 5-8% overshoot at contact impact
+    // overshoot = follow-through across cutting plane, micro contact pause
     slashOvershoot: {
-      lean: 27, drop: 8,
-      au: 88, al: 82, sw: 82,
-      bau: -45, bal: -22,
-      flu: 58, fll: 13,
-      blu: -37, bll: -9,
-      dx: 24, dy: 0, rot: 0, airborne: false
+      lean: 30, drop: 10,
+      au: 80, al: 75, sw: 65,
+      bau: -60, bal: -35,
+      flu: 64, fll: 15,
+      blu: -42, bll: -10,
+      dx: 30, dy: 0, rot: 0, airborne: false
     },
-    // recover = deliberate return to guard
+    // recover = smooth balanced return to ready guard
     slashRecover: {
-      lean: 10, drop: 2,
-      au: 60, al: 100, sw: 125,
-      bau: -25, bal: 10,
-      flu: 30, fll: 8,
-      blu: -25, bll: -6,
-      dx: 8, dy: 0, rot: 0, airborne: false
+      lean: 12, drop: 4,
+      au: 55, al: 105, sw: 140,
+      bau: -28, bal: 15,
+      flu: 32, fll: 10,
+      blu: -28, bll: -8,
+      dx: 10, dy: 0, rot: 0, airborne: false
     },
 
-    // Hurt: head and chest snap back, quick recoil (dx: -20)
+    // Hurt: violent recoil snap back, head whiplash, blade knocked wide (dx: -24)
     hurt: {
-      lean: -28, drop: 4,
-      au: -10, al: 10, sw: 10,
-      bau: -45, bal: -25,
-      flu: 10, fll: 2,
-      blu: -30, bll: -10,
-      dx: -20, dy: 0, rot: 0, airborne: false
+      lean: -32, drop: 6,
+      au: -15, al: 15, sw: 20,
+      bau: -55, bal: -35,
+      flu: 8, fll: 4,
+      blu: -36, bll: -12,
+      dx: -24, dy: 0, rot: 0, airborne: false
     },
+    // hurtRecover = balance recovery & foot replant
     hurtRecover: {
-      lean: -8, drop: 2,
-      au: 25, al: 75, sw: 105,
-      bau: -30, bal: 5,
-      flu: 14, fll: 4,
-      blu: -22, bll: -6,
-      dx: -10, dy: 0, rot: 0, airborne: false
+      lean: -10, drop: 4,
+      au: 30, al: 90, sw: 125,
+      bau: -25, bal: 15,
+      flu: 18, fll: 6,
+      blu: -26, bll: -8,
+      dx: -14, dy: 0, rot: 0, airborne: false
     },
 
     // -------------------------------------------------------------------------
@@ -349,21 +350,22 @@ window.CF = window.CF || {};
       blu: -18, bll: -5,
       dx: 12, dy: 0, rot: 0, airborne: false
     },
+    // Knockdown: tilt back loss of balance -> flat grounded defeat
     knockdownFall: {
-      lean: -40, drop: 10,
-      au: -30, al: -10, sw: -40,
-      bau: -50, bal: -30,
-      flu: 10, fll: 2,
-      blu: -30, bll: -10,
-      dx: -25, dy: -10, rot: -45, airborne: true
+      lean: -48, drop: 12,
+      au: -40, al: -15, sw: -50,
+      bau: -60, bal: -40,
+      flu: 12, fll: 4,
+      blu: -35, bll: -12,
+      dx: -30, dy: -12, rot: -50, airborne: true
     },
     knockdownFlat: {
-      lean: -85, drop: 30,
-      au: -80, al: -70, sw: -90,
-      bau: -90, bal: -80,
-      flu: -75, fll: -20,
-      blu: -80, bll: -25,
-      dx: -35, dy: 30, rot: -90, airborne: true
+      lean: -90, drop: 38,
+      au: -85, al: -75, sw: -95,
+      bau: -95, bal: -85,
+      flu: -85, fll: -10,
+      blu: -90, bll: -15,
+      dx: -40, dy: 38, rot: -90, airborne: true
     },
     victoryHop: {
       lean: -5, drop: 0,

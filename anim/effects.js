@@ -82,6 +82,9 @@ window.CF = window.CF || {};
     // Extra FX toggle (OFF by default as required by Rule 8)
     this.extraFx = false;
 
+    // Reduced FX toggle (OFF by default for full compatibility; enable for low-power laptops)
+    this.reducedFx = false;
+
     // Spark starburst pool
     this.sparks = [];
     for (let i = 0; i < MAX_SPARKS; i++) {
@@ -145,9 +148,46 @@ window.CF = window.CF || {};
     this.trails = {};
   }
 
+  // --- Configuration ---
+
+  EffectsManager.prototype.setReducedFx = function (enabled) {
+    this.reducedFx = !!enabled;
+    return this.reducedFx;
+  };
+
+  EffectsManager.prototype.isReducedFx = function () {
+    return this.reducedFx;
+  };
+
+  // Check if any visual effects or timers are active (for quiescent / idle scene detection)
+  EffectsManager.prototype.hasActiveEffects = function () {
+    if (this.hitStopTimer > 0 || this.shakeTimer > 0 || this.flashTimer > 0 || this.banner.active) {
+      return true;
+    }
+    for (let i = 0; i < this.sparks.length; i++) {
+      if (this.sparks[i].active) return true;
+    }
+    for (let i = 0; i < this.dust.length; i++) {
+      if (this.dust[i].active) return true;
+    }
+    for (let i = 0; i < this.shards.length; i++) {
+      if (this.shards[i].active) return true;
+    }
+    for (let i = 0; i < this.floatingWords.length; i++) {
+      if (this.floatingWords[i].active) return true;
+    }
+    for (let i = 0; i < this.shockwaves.length; i++) {
+      if (this.shockwaves[i].active) return true;
+    }
+    for (const id in this.trails) {
+      if (this.trails[id] && this.trails[id].length > 0) return true;
+    }
+    return false;
+  };
+
   // --- Effect Spawners ---
 
-  // Hit spark: small star of 4 to 6 short lines (Rule 8)
+  // Hit spark: small star of 4 to 6 short lines (Rule 8), or 3 short lines in reducedFx mode
   EffectsManager.prototype.addHitSpark = function (x, y, color) {
     const s = this.sparks[this.sparkCursor];
     this.sparkCursor = (this.sparkCursor + 1) % this.sparks.length;
@@ -156,13 +196,19 @@ window.CF = window.CF || {};
     s.y = y;
     s.color = color || '#EF9F27';
     s.life = 0;
-    s.maxLife = 140;
-    s.rays = 5;
-    s.rayLength = 9;
+    if (this.reducedFx) {
+      s.maxLife = 90;
+      s.rays = 3;
+      s.rayLength = 6;
+    } else {
+      s.maxLife = 140;
+      s.rays = 5;
+      s.rayLength = 9;
+    }
     s.angleOffset = Math.random() * Math.PI;
   };
 
-  // Blue block spark (Rule 8)
+  // Blue block spark (Rule 8), or 3 short lines in reducedFx mode
   EffectsManager.prototype.addBlockSpark = function (x, y) {
     const s = this.sparks[this.sparkCursor];
     this.sparkCursor = (this.sparkCursor + 1) % this.sparks.length;
@@ -171,9 +217,15 @@ window.CF = window.CF || {};
     s.y = y;
     s.color = '#38BDF8';
     s.life = 0;
-    s.maxLife = 130;
-    s.rays = 5;
-    s.rayLength = 8;
+    if (this.reducedFx) {
+      s.maxLife = 80;
+      s.rays = 3;
+      s.rayLength = 5;
+    } else {
+      s.maxLife = 130;
+      s.rays = 5;
+      s.rayLength = 8;
+    }
     s.angleOffset = Math.random() * Math.PI;
   };
 
@@ -186,8 +238,11 @@ window.CF = window.CF || {};
     }
   };
 
-  // Small dust puffs on steps and landings (3-5 tiny dots)
+  // Small dust puffs on steps and landings (3-5 tiny dots; skipped entirely in reducedFx mode)
   EffectsManager.prototype.addDust = function (x, y, count) {
+    if (this.reducedFx) {
+      return;
+    }
     count = Math.min(count || 4, 5);
     for (let i = 0; i < count; i++) {
       const p = this.dust[this.dustCursor];
@@ -204,9 +259,10 @@ window.CF = window.CF || {};
     }
   };
 
-  // Shield shard explosion on shieldBreak()
+  // Shield shard explosion on shieldBreak() (capped in reducedFx mode)
   EffectsManager.prototype.addShieldShards = function (x, y, count) {
-    count = Math.min(count || 12, 16);
+    const maxShards = this.reducedFx ? 6 : 16;
+    count = Math.min(count || (this.reducedFx ? 6 : 12), maxShards);
     for (let i = 0; i < count; i++) {
       const s = this.shards[this.shardCursor];
       this.shardCursor = (this.shardCursor + 1) % this.shards.length;
@@ -219,9 +275,9 @@ window.CF = window.CF || {};
       s.vy = Math.sin(angle) * speed;
       s.rot = Math.random() * Math.PI * 2;
       s.vRot = (Math.random() - 0.5) * 0.2;
-      s.size = 3;
+      s.size = this.reducedFx ? 2.5 : 3;
       s.life = 0;
-      s.maxLife = 260 + Math.random() * 100;
+      s.maxLife = this.reducedFx ? (160 + Math.random() * 60) : (260 + Math.random() * 100);
       s.color = '#38BDF8';
     }
   };
@@ -250,7 +306,7 @@ window.CF = window.CF || {};
     sw.radius = 4;
     sw.maxRadius = maxRadius || 65;
     sw.life = 0;
-    sw.maxLife = 320;
+    sw.maxLife = this.reducedFx ? 180 : 320;
     sw.color = color || '#EF4444';
   };
 
@@ -291,15 +347,16 @@ window.CF = window.CF || {};
     return this.banner.active;
   };
 
-  // Sword trail: short, fading, only on strikes (Rule 8)
+  // Sword trail: short, fading, only on strikes (Rule 8; capped shorter in reducedFx mode)
   EffectsManager.prototype.recordTrailPoint = function (id, x, y, isStriking) {
     if (!this.trails[id]) {
       this.trails[id] = [];
     }
     const trail = this.trails[id];
+    const maxPoints = this.reducedFx ? 3 : MAX_TRAIL_POINTS;
     if (isStriking) {
       trail.push({ x: x, y: y, alpha: 1.0 });
-      if (trail.length > MAX_TRAIL_POINTS) {
+      if (trail.length > maxPoints) {
         trail.shift();
       }
     } else {
@@ -681,6 +738,11 @@ window.CF = window.CF || {};
     for (let i = 0; i < this.shards.length; i++) this.shards[i].active = false;
     for (let i = 0; i < this.floatingWords.length; i++) this.floatingWords[i].active = false;
     for (let i = 0; i < this.shockwaves.length; i++) this.shockwaves[i].active = false;
+    this.sparkCursor = 0;
+    this.dustCursor = 0;
+    this.shardCursor = 0;
+    this.wordCursor = 0;
+    this.shockwaveCursor = 0;
     this.shakeTimer = 0;
     this.shakeIntensity = 0;
     this.shakeOffsetX = 0;

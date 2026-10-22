@@ -93,6 +93,25 @@ window.CF = window.CF || {};
     return this;
   };
 
+  Fighter.prototype.off = function (event, cb) {
+    if (this._listeners[event]) {
+      const idx = this._listeners[event].indexOf(cb);
+      if (idx !== -1) {
+        this._listeners[event].splice(idx, 1);
+      }
+    }
+    return this;
+  };
+
+  Fighter.prototype.once = function (event, cb) {
+    const self = this;
+    function wrapper(data) {
+      self.off(event, wrapper);
+      cb(data);
+    }
+    return this.on(event, wrapper);
+  };
+
   Fighter.prototype.emit = function (event, data) {
     const list = this._listeners[event];
     if (list && list.length > 0) {

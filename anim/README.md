@@ -131,4 +131,68 @@ All files reside strictly under `anim/`:
 - **`anim/fighter.js`** — `CF.Fighter` entity implementing the full `shared/CONTRACT.md` API.
 - **`anim/lab.js`** — Lab controls, DPR backing store resizer, reaction simulation, and contact sheet generator.
 - **`anim/test_group1.js`** — Headless automated test suite verifying contracts, timings, and benchmarks.
+- **`anim/test_group2.js`** — Group 2 moves automated verification suite.
+- **`anim/test_group3.js`** — Group 3 moves automated verification suite.
+- **`anim/test_group4.js`** — Group 4 moves and Pose Tweaker verification suite.
+- **`anim/test_reduced_fx.js`** — Focused regression suite verifying reduced effects and low-power idle throttling.
+- **`anim/test_combat_upgrade.js`** — Focused regression suite for combat animation quality and clash demos.
 - **`anim/check_silhouettes.js`** — Mathematical limb clearance and silhouette stance analyzer.
+
+---
+
+## ⚔️ Combat Animation Quality Upgrades & Clash Demos
+
+The core combat triad has undergone an intensive visual and kinematic quality pass:
+1. **Slash:**
+   - **Deep Anticipation (`slashWindup`):** Torso coils back ($-16^\circ$, $dx: -10$), weight shifts onto back leg, sword arm cocks high and back ($sw: 210^\circ$).
+   - **Full-Body Lunge (`slashStrike`):** Snappy forward lunge ($+28^\circ$ lean, $dx: +28$), front knee driving forward into a deep stance, rear arm countering for dynamic balance, and sword sweeping cleanly across the horizontal plane ($sw: 85^\circ$).
+   - **Follow-Through Arc (`slashOvershoot`):** Blade continues in a curved arc across the body ($sw: 65^\circ$, $dx: +30$) with a readable $40\text{ms}$ impact freeze before smooth recovery.
+2. **Duck & Sidestep Evasions:**
+   - **Duck:** Deep knee compression and low torso crouch ($lean: 36^\circ$, $drop: 28\text{px}$, $footSep: 61.7\text{px}$) lowering the head by $>26\text{px}$ beneath incoming high slashes.
+   - **Sidestep (`stepLeft` / `stepRight`):** Athletic weight transfer with leading foot driving into space and trailing knee catching momentum.
+3. **Hit Reactions & Defeat:**
+   - **Hurt:** Violent recoil snap ($lean: -32^\circ$, $dx: -24$), head and neck whiplash, blade knocked wide, followed by a grounded foot reset.
+   - **Knockdown Defeat:** High-impact balance loss tilting back through the air into a complete flat collapse ($lean: -90^\circ$, $rot: -90^\circ$, $airborne: true$) that remains grounded indefinitely.
+
+### Interactive Combat Clash Demos
+The Animation Lab includes one-click buttons to demonstrate combat interactions in real time:
+- **🛡️ Slash vs. Duck:** Demonstrates Fighter A's lunging slash passing harmlessly overhead while Fighter B ducks into low evasive clearance.
+- **💥 Slash vs. Hit Recoil:** Demonstrates direct strike impact, triggering violent chest whiplash and sparks on Fighter B.
+- **💀 Slash vs. Knockdown:** Demonstrates a finishing strike causing Fighter B to collapse flat on the floor in persistent defeat.
+
+---
+
+## ⚡ Low-Power & Laptop 2 Performance Optimizations
+
+To guarantee smooth performance and low battery/thermal consumption on weaker laptops (e.g., dual-core CPUs, integrated Intel HD Graphics):
+
+### 1. Configurable Reduced Effects Mode (`reducedFx`)
+- **Default State:** `false` (100% backward compatible with original visual quality pass).
+- **How to Enable via UI:** Check the **"Reduced FX"** checkbox in the top header toolbar of `anim/index.html`.
+- **How to Enable via API:**
+  ```javascript
+  // Either via CF.Effects or top-level CF convenience helper
+  CF.Effects.setReducedFx(true);
+  // or
+  CF.setReducedFx(true);
+  ```
+- **Optimizations Applied:**
+  - **Hit & Block Sparks:** Simplified from 5 multi-line rays ($9\text{px}$) to 3 rays ($5-6\text{px}$) with faster fade-out ($80-90\text{ms}$ vs $130-140\text{ms}$), reducing canvas 2D stroke operations by 40%.
+  - **Ambient Dust Puffs:** Optional landing and step dust puffs are completely skipped.
+  - **Shield Shards:** Max simultaneous break shards capped to 6 (down from 16) with shorter lifetime.
+  - **Shockwaves & Trails:** Max trail history capped to 3 points (down from 5), shockwave lifetime reduced to $180\text{ms}$.
+- **Zero Gameplay / Timing Impact:** Hit-stop duration ($80\text{ms}$), combat move durations, keyframe interpolation, strike moments, and event callbacks (`strike`, `tell`, `parry`, `shieldBreak`, `end`) are strictly invariant and run identically regardless of `reducedFx` state.
+
+### 2. Low-Power Idle Throttling (`idleThrottle`)
+- **Default State:** `false` (full 60 FPS redraws by default).
+- **How to Enable via UI:** Check the **"Low-Power Idle"** checkbox in `anim/index.html`.
+- **How to Enable via API:**
+  ```javascript
+  CF.setIdleThrottle(true); // or CF.Lab.setIdleThrottle(true);
+  ```
+- **Mechanism & Safety:**
+  - **Quiescent Scene Detection (`isSceneVisuallyIdle`):** Only throttles when both fighters are resting in `idle`, neither fighter is busy, no auto-reactions or direction waits are pending, and `CF.Effects.hasActiveEffects()` is `false`.
+  - **Zero Input or Simulation Delay:** Simulation updates (`updateSimulation(dt)`) and input listeners continue ticking every frame without skipping.
+  - **~67% Canvas Redraw Reduction:** On standard 60Hz screens, idle canvas redraws are throttled to 20–24 FPS, maintaining smooth procedural breathing while eliminating over 60% of idle GPU/canvas redraw overhead.
+  - **Instant Uncapped Response:** The millisecond any attack or movement starts, throttling instantly disengages, rendering that very frame at full 60+ FPS with zero lag.
+  - **Zero Redundant Redraws While Paused:** Pausing completely stops canvas redraws until user interaction or step.

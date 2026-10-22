@@ -21,6 +21,13 @@ window.CF = window.CF || {};
   let dodgeDelayMs = 450;
   let scheduledDodge = null;
 
+  // Low-Power / Idle Throttling Configuration
+  let idleThrottle = false;
+  let lastRenderTime = 0;
+  let renderDirty = true;
+  const IDLE_FPS = 24;
+  const IDLE_INTERVAL = 1000 / IDLE_FPS; // ~41.67ms
+
   const LOGICAL_W = 640;
   const LOGICAL_H = 220;
 
@@ -257,6 +264,38 @@ window.CF = window.CF || {};
     requestAnimationFrame(animationLoop);
   }
 
+  // --- Quiescent / Visual Inactivity Check ---
+  function isSceneVisuallyIdle() {
+    if (!fighterA || !fighterB) return false;
+
+    // Active busy moves
+    if (fighterA.isBusy() || fighterB.isBusy()) {
+      return false;
+    }
+
+    // Moves other than neutral idle (e.g. focus typing, knockdown)
+    if (fighterA.currentMove().name !== 'idle' || fighterB.currentMove().name !== 'idle') {
+      return false;
+    }
+
+    // Pending direction wait
+    if (fighterA._isWaitingForDir || fighterB._isWaitingForDir) {
+      return false;
+    }
+
+    // Scheduled reaction
+    if (scheduledDodge && !scheduledDodge.handled) {
+      return false;
+    }
+
+    // Active visual effects in CF.Effects
+    if (CF.Effects && CF.Effects.hasActiveEffects && CF.Effects.hasActiveEffects()) {
+      return false;
+    }
+
+    return true;
+  }
+
   // --- Animation Loop ---
   function animationLoop(timestamp) {
     const rawDt = timestamp - (lastTimestamp || timestamp);
@@ -264,11 +303,29 @@ window.CF = window.CF || {};
 
     const dt = Math.min(rawDt, 60);
 
+    // Simulation updates run every frame without skipping
     if (!isPaused) {
       updateSimulation(dt * playbackSpeed);
     }
 
-    renderCanvas();
+    // Determine whether to throttle canvas redraws
+    let shouldRender = true;
+    if (isPaused) {
+      // While paused, only redraw when marked dirty (e.g. user dragged tweaker slider)
+      shouldRender = renderDirty;
+      renderDirty = false;
+    } else if (idleThrottle && isSceneVisuallyIdle()) {
+      const elapsedSinceRender = timestamp - lastRenderTime;
+      if (elapsedSinceRender < IDLE_INTERVAL) {
+        shouldRender = false;
+      }
+    }
+
+    if (shouldRender) {
+      renderCanvas();
+      lastRenderTime = timestamp;
+    }
+
     updateLiveReadout();
 
     requestAnimationFrame(animationLoop);
@@ -438,6 +495,9 @@ window.CF = window.CF || {};
         isPaused = !isPaused;
         pauseBtn.textContent = isPaused ? '▶ Resume' : '⏸ Pause';
         pauseBtn.classList.toggle('active', isPaused);
+        if (isPaused) {
+          renderDirty = true;
+        }
         log(isPaused ? 'Simulation paused.' : 'Simulation resumed.');
       });
     }
@@ -465,6 +525,8 @@ window.CF = window.CF || {};
         scheduledDodge = null;
         CF.Effects.clear();
         updateDodgeCoverageUI();
+        renderDirty = true;
+        renderCanvas();
         log('Reset both fighters and arena effects.');
       });
     }
@@ -486,7 +548,31 @@ window.CF = window.CF || {};
     if (silhouetteToggle) {
       silhouetteToggle.addEventListener('change', (e) => {
         silhouetteMode = e.target.checked;
+        renderDirty = true;
+        renderCanvas();
         log(`Silhouette mode: ${silhouetteMode ? 'ENABLED (Solid black)' : 'DISABLED'}`);
+      });
+    }
+
+    // Reduced FX Toggle (Laptop 2 low-power / weak hardware optimization)
+    const reducedFxToggle = document.getElementById('reducedFxToggle');
+    if (reducedFxToggle) {
+      reducedFxToggle.checked = false;
+      CF.Effects.setReducedFx(false);
+      reducedFxToggle.addEventListener('change', (e) => {
+        CF.Effects.setReducedFx(e.target.checked);
+        log(`Reduced FX: ${CF.Effects.isReducedFx() ? 'ENABLED (Low power)' : 'DISABLED'}`);
+      });
+    }
+
+    // Idle Throttling Toggle (24 FPS canvas redraw during neutral idle)
+    const idleThrottleToggle = document.getElementById('idleThrottleToggle');
+    if (idleThrottleToggle) {
+      idleThrottleToggle.checked = false;
+      idleThrottle = false;
+      idleThrottleToggle.addEventListener('change', (e) => {
+        idleThrottle = e.target.checked;
+        log(`Low-Power Idle Throttling: ${idleThrottle ? 'ENABLED (24 FPS idle)' : 'DISABLED (60 FPS)'}`);
       });
     }
 
@@ -506,6 +592,8 @@ window.CF = window.CF || {};
     if (debugSkeletonToggle) {
       debugSkeletonToggle.addEventListener('change', (e) => {
         debugSkeleton = e.target.checked;
+        renderDirty = true;
+        renderCanvas();
       });
     }
 
@@ -615,6 +703,56 @@ window.CF = window.CF || {};
         const receipt = fighterA.play(move);
         log(`A: play('${move}') -> id:${receipt.id}, totalMs:${receipt.totalMs}`);
       });
+    }
+
+    // Combat Clash Demos (Focus Milestone)
+    const clashDodgeBtn = document.getElementById('clashDodgeBtn');
+    if (clashDodgeBtn) {
+      clashDodgeBtn.addEventListener('click', () => runClashDemo('dodge'));
+    }
+
+    const clashHitBtn = document.getElementById('clashHitBtn');
+    if (clashHitBtn) {
+      clashHitBtn.addEventListener('click', () => runClashDemo('hit'));
+    }
+
+    const clashKnockdownBtn = document.getElementById('clashKnockdownBtn');
+    if (clashKnockdownBtn) {
+      clashKnockdownBtn.addEventListener('click', () => runClashDemo('knockdown'));
+    }
+  }
+
+  // --- Combat Clash Demos (Focus Milestone) ---
+  function runClashDemo(type) {
+    fighterA.reset();
+    fighterB.reset();
+    scheduledDodge = null;
+    CF.Effects.clear();
+    renderDirty = true;
+
+    if (type === 'dodge') {
+      log('--- Clash Demo: Slash vs. Duck ---', 'tell');
+      // Fighter B ducks first: duck active window is [150, 750]ms
+      fighterB.play('duck');
+      setTimeout(() => {
+        fighterA.play('slash');
+        log('A: lunging Slash initiated against ducking defender...', 'strike');
+      }, 30);
+    } else if (type === 'hit') {
+      log('--- Clash Demo: Slash vs. Hit Recoil ---', 'tell');
+      // Fighter B remains neutral, attacker strikes
+      fighterA.play('slash');
+      log('A: lunging Slash initiated against undefended target...', 'strike');
+    } else if (type === 'knockdown') {
+      log('--- Clash Demo: Slash vs. Knockdown Defeat ---', 'tell');
+      // Attacker strikes, defender collapses into defeat flat on the floor
+      fighterA.once('strike', () => {
+        log('Finishing strike connected! Fighter B collapses into knockdown.', 'strike');
+        fighterB.play('knockdown');
+        CF.Effects.addHitSpark(fighterB.x, fighterB.groundY - 30, '#EF4444');
+        CF.Effects.shake(5, 160);
+      });
+      fighterA.play('slash');
     }
   }
 
@@ -934,6 +1072,30 @@ window.CF = window.CF || {};
     }).join('');
   }
 
+  CF.setIdleThrottle = function (enabled) {
+    idleThrottle = !!enabled;
+    const toggle = (typeof document !== 'undefined') ? document.getElementById('idleThrottleToggle') : null;
+    if (toggle) toggle.checked = idleThrottle;
+    return idleThrottle;
+  };
+
+  CF.isIdleThrottle = function () {
+    return idleThrottle;
+  };
+
+  CF.setReducedFx = function (enabled) {
+    const val = CF.Effects.setReducedFx(enabled);
+    const toggle = (typeof document !== 'undefined') ? document.getElementById('reducedFxToggle') : null;
+    if (toggle) toggle.checked = val;
+    return val;
+  };
+
+  CF.isReducedFx = function () {
+    return CF.Effects.isReducedFx();
+  };
+
+  CF.isSceneVisuallyIdle = isSceneVisuallyIdle;
+
   CF.Lab = {
     init: init,
     resizeCanvas: resizeCanvas,
@@ -942,7 +1104,13 @@ window.CF = window.CF || {};
     generateContactSheet: generateContactSheet,
     initPoseTweaker: initPoseTweaker,
     loadPoseIntoTweaker: loadPoseIntoTweaker,
-    generatePoseJsCode: generatePoseJsCode
+    generatePoseJsCode: generatePoseJsCode,
+    setIdleThrottle: CF.setIdleThrottle,
+    isIdleThrottle: CF.isIdleThrottle,
+    setReducedFx: CF.setReducedFx,
+    isReducedFx: CF.isReducedFx,
+    isSceneVisuallyIdle: isSceneVisuallyIdle,
+    runClashDemo: runClashDemo
   };
 
   if (typeof document !== 'undefined') {

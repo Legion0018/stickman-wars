@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Fighters — Animation Lab</title>
+  <style>
+    :root {
+      --bg: #090D16;
+      --surface: #111827;
+      --surface-border: #1F2937;
+      --text: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --accent-red: #EF4444;
+      --accent-blue: #3B82F6;
+      --accent-gold: #F59E0B;
+      --accent-cyan: #06B6D4;
+      --accent-green: #10B981;
+      --radius: 6px;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 16px;
+      line-height: 1.4;
+    }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--surface-border);
+      padding-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h1 span.badge {
+      background: #7F1D1D;
+      color: #FECACA;
+      font-size: 0.72rem;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .header-sub {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Canvas Stage */
+    .stage-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #labCanvas {
+      background: #0B1120;
+      border: 1px solid #1E293B;
+      border-radius: 4px;
+      width: 100%;
+      max-width: 640px;
+      height: 220px;
+      display: block;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Playback Toolbar */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: 100%;
+      max-width: 640px;
+      padding: 6px 0;
+      border-top: 1px solid var(--surface-border);
+    }
+
+    .btn-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    button {
+      background: #1F2937;
+      color: var(--text);
+      border: 1px solid #374151;
+      padding: 6px 12px;
+      font-size: 0.82rem;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover {
+      background: #374151;
+      border-color: #4B5563;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.primary {
+      background: #DC2626;
+      border-color: #EF4444;
+      color: #FFF;
+    }
+
+    button.primary:hover {
+      background: #B91C1C;
+    }
+
+    button.active {
+      background: #2563EB;
+      border-color: #3B82F6;
+      color: #FFF;
+    }
+
+    .slider-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    input[type="range"] {
+      cursor: pointer;
+    }
+
+    /* Two-column layout */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 720px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .card-title {
+      font-size: 0.92rem;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--surface-border);
+      padding-bottom: 6px;
+    }
+
+    /* Move Buttons Panel */
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 6px;
+    }
+
+    .button-grid button {
+      padding: 8px 6px;
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    .special-btn {
+      background: #78350F;
+      border-color: #F59E0B;
+      color: #FEF3C7;
+      font-weight: 600;
+    }
+    .special-btn:hover {
+      background: #92400E;
+    }
+
+    .sub-section-title {
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-top: 6px;
+      margin-bottom: 2px;
+    }
+
+    /* Live Readout & Log */
+    .readout-box {
+      background: #090D16;
+      border: 1px solid #1E293B;
+      border-radius: var(--radius);
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .readout-col {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .log-box {
+      background: #090D16;
+      border: 1px solid #1E293B;
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      height: 150px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .log-row {
+      line-height: 1.35;
+      word-break: break-all;
+    }
+
+    .log-time {
+      color: #64748B;
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    th, td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .g1-row {
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .badge.attack { background: #7F1D1D; color: #FECACA; }
+    .badge.block { background: #1E3A8A; color: #BFDBFE; }
+    .badge.dodge { background: #064E3B; color: #A7F3D0; }
+    .badge.reaction { background: #78350F; color: #FDE68A; }
+    .badge.special { background: #581C87; color: #E9D5FF; }
+    .badge.persistent { background: #374151; color: #D1D5DB; }
+    .badge.g1 { background: #991B1B; color: #FEE2E2; }
+    .badge.default { background: #1F2937; color: #9CA3AF; }
+
+    select {
+      background: #1F2937;
+      color: var(--text);
+      border: 1px solid #374151;
+      padding: 4px 8px;
+      font-size: 0.82rem;
+      border-radius: var(--radius);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div>
+        <h1>Code Fighters <span class="badge">Animation Lab</span></h1>
+        <div class="header-sub">Phase 1: Stick Figure Combat Rig, Easing &amp; Zero-Allocation Physics</div>
+      </div>
+      <div class="btn-group">
+        <label class="slider-control">
+          <input type="checkbox" id="debugSkeleton"> Show Skeleton Overlay
+        </label>
+      </div>
+    </header>
+
+    <!-- Canvas Stage -->
+    <div class="stage-card">
+      <canvas id="labCanvas" width="640" height="220"></canvas>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="btn-group">
+          <button id="pauseBtn">⏸ Pause</button>
+          <button id="stepBtn">⏭ Step Frame</button>
+          <button id="resetBtn">↺ Reset</button>
+        </div>
+
+        <div class="slider-control">
+          <span>Speed:</span>
+          <input type="range" id="speedSlider" min="0.1" max="2.0" step="0.1" value="1.0">
+          <span id="speedVal" style="min-width: 32px">1.0x</span>
+        </div>
+
+        <div class="btn-group">
+          <button id="playAllBtn" class="primary">▶ Play All Group 1</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls & Feedback Grid -->
+    <div class="grid-2">
+      <!-- Left: Group 1 Move Controls -->
+      <div class="card">
+        <div class="card-title">
+          <span>Group 1 Moves (Fighter A)</span>
+          <span style="font-size: 0.75rem; color: var(--accent-red)">Attacker (x: 200)</span>
+        </div>
+
+        <div class="sub-section-title">Stance &amp; Dodges</div>
+        <div class="button-grid">
+          <button data-move="idle">Idle</button>
+          <button data-move="stepLeft">Step Left</button>
+          <button data-move="stepRight">Step Right</button>
+          <button data-move="jump">Jump</button>
+          <button data-move="duck">Duck</button>
+          <button data-move="block">Block</button>
+        </div>
+
+        <div class="sub-section-title">Attacks &amp; Reactions</div>
+        <div class="button-grid">
+          <button data-move="slash" class="primary">Slash</button>
+          <button data-move="hurt">Hurt</button>
+          <button data-move="special" class="special-btn">★ Special Slam</button>
+        </div>
+
+        <div class="sub-section-title">Telegraphed Attacks (enemyAttack &amp; feint)</div>
+        <div class="button-grid">
+          <button data-move="enemyAttack" data-dir="h" data-tier="easy">Attack [H] (Easy)</button>
+          <button data-move="enemyAttack" data-dir="v" data-tier="easy">Attack [V] (Easy)</button>
+          <button data-move="enemyAttack" data-dir="h" data-tier="hard">Attack [H] (Hard)</button>
+          <button data-move="feint" data-dir="h" data-tier="easy">Feint [H]</button>
+          <button data-move="feint" data-dir="v" data-tier="easy">Feint [V]</button>
+        </div>
+
+        <div class="sub-section-title">Contract Addendum Verifications</div>
+        <div class="button-grid" style="grid-template-columns: 1fr 1fr;">
+          <button id="testPendingBtn" style="border-color: #38BDF8; color: #38BDF8;">
+            Resolve Dir in 2.2s (Post-Tell)
+          </button>
+          <button id="testEarlyResolveBtn" style="border-color: #38BDF8; color: #38BDF8;">
+            Resolve Dir in 0.6s (Pre-Tell)
+          </button>
+          <button id="testHitAliasBtn" style="border-color: #F59E0B; color: #F59E0B;">
+            Test f.react('hit')
+          </button>
+          <button id="bShieldToggle">
+            Shield: Inactive
+          </button>
+        </div>
+
+        <div class="sub-section-title">Other Move Catalog</div>
+        <div style="display: flex; gap: 8px;">
+          <select id="allMovesSelect" style="flex: 1;">
+            <option value="weakSlash">weakSlash (Group 2)</option>
+            <option value="strongSlash">strongSlash (Group 2)</option>
+            <option value="comboHeavy">comboHeavy (Group 2)</option>
+            <option value="stumble">stumble (Group 2)</option>
+            <option value="knockdown">knockdown (Group 2)</option>
+            <option value="victory">victory (Group 2)</option>
+            <option value="riposte">riposte (Group 3)</option>
+            <option value="spinSlash">spinSlash (Group 3)</option>
+            <option value="backflipEvade">backflipEvade (Group 3)</option>
+            <option value="dashThrust">dashThrust (Group 3)</option>
+            <option value="focus">focus (Group 3)</option>
+          </select>
+          <button id="playSelectedBtn">Play Move</button>
+        </div>
+      </div>
+
+      <!-- Right: Target Reaction, Readout & Event Stream -->
+      <div class="card">
+        <div class="card-title">
+          <span>Target Settings (Fighter B)</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label style="font-size: 0.75rem; color: var(--text-muted)">Reaction:</label>
+            <select id="targetReactSelect">
+              <option value="auto">Auto (Dodge/Block/Hit)</option>
+              <option value="hit">Always Hit</option>
+              <option value="block">Always Block</option>
+              <option value="parry">Always Parry</option>
+              <option value="dodge">Always Dodge</option>
+              <option value="none">No Reaction</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="readout-box">
+          <div class="readout-col" id="readoutA">
+            <!-- Populated dynamically -->
+          </div>
+          <div class="readout-col" id="readoutB">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="card-title" style="margin-top: 4px;">
+          <span>Event Stream</span>
+          <button id="clearLogBtn" style="padding: 2px 6px; font-size: 0.7rem;">Clear</button>
+        </div>
+
+        <div class="log-box" id="eventLog">
+          <div class="log-row" style="color: #64748B;">Ready. Waiting for action events...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Move Reference Table -->
+    <div class="card">
+      <div class="card-title">
+        <span>Complete Contract Move Reference Table (22 Moves)</span>
+        <span style="font-size: 0.75rem; color: var(--text-muted)">CF.getMoveInfo() Specification</span>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Move Name</th>
+              <th>Total Duration</th>
+              <th>Strike Time(s)</th>
+              <th>Tags</th>
+              <th>Persistent</th>
+            </tr>
+          </thead>
+          <tbody id="moveTableBody">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Classic Scripts loaded in strict dependency order -->
+  <script src="rig.js"></script>
+  <script src="poses.js"></script>
+  <script src="effects.js"></script>
+  <script src="moves.js"></script>
+  <script src="fighter.js"></script>
+  <script src="lab.js"></script>
+</body>
+</html>

@@ -66,33 +66,33 @@ window.CF = window.CF || {};
       description: 'Standard horizontal sword slash'
     },
     weakSlash: {
-      totalMs: 300,
-      strikeMs: 130,
+      totalMs: 360,
+      strikeMs: 210,
       persistent: false,
       tags: ['attack'],
-      description: 'Fast, low-damage quick jab slash'
+      description: 'Fast, low-damage quick jab slash (spec: 360ms, strike: 210ms)'
     },
     strongSlash: {
-      totalMs: 600,
-      strikeMs: 320,
+      totalMs: 700,
+      strikeMs: 390,
       persistent: false,
       tags: ['attack'],
-      description: 'Heavy overhead power strike with long windup'
+      description: 'Heavy power strike with forward step (spec: 700ms, strike: 390ms)'
     },
     comboHeavy: {
-      totalMs: 900,
-      strikeMs: 200,
-      strikeTimes: [200, 480, 750],
+      totalMs: 1400,
+      strikeMs: 300,
+      strikeTimes: [300, 650, 1050],
       persistent: false,
       tags: ['attack'],
-      description: 'Three-hit relentless heavy combination'
+      description: 'Three-hit relentless heavy combination (spec: 1400ms, strikes: 300, 650, 1050ms)'
     },
     stumble: {
-      totalMs: 650,
+      totalMs: 1000,
       strikeMs: null,
       persistent: false,
       tags: ['reaction'],
-      description: 'Off-balance stagger recovery from blocked or parried hit'
+      description: 'Off-balance wild whiff stagger (spec: 1000ms)'
     },
     hurt: {
       totalMs: 350,
@@ -621,79 +621,82 @@ window.CF = window.CF || {};
     },
 
     // -------------------------------------------------------------------------
-    // 4. GROUP 2 MOVES
+    // 4. GROUP 2 MOVES (Original Spec Durations & Easing)
     // -------------------------------------------------------------------------
     weakSlash: {
       name: 'weakSlash',
       tags: ['attack'],
-      totalMs: 300,
-      strikeMs: 130,
+      totalMs: 360,
+      strikeMs: 210,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeInOut' },
-        { t: 70, pose: P.weakSlashWindup, ease: 'easeInOut' },
-        { t: 130, pose: P.weakSlashStrike, ease: 'easeOut' }, // Snappy 60ms jab
-        { t: 170, pose: P.weakSlashStrike, ease: 'linear' },  // Contact pause
-        { t: 230, pose: P.slashRecover, ease: 'easeOut' },
-        { t: 300, pose: P.idle, ease: 'easeOut' }
+        { t: 140, pose: P.weakSlashWindup, ease: 'easeInOut' },
+        { t: 210, pose: P.weakSlashStrike, ease: 'easeOut' }, // Snappy 70ms strike action
+        { t: 250, pose: P.weakSlashStrike, ease: 'linear' },  // Micro contact pause
+        { t: 300, pose: P.slashRecover, ease: 'easeOut' },
+        { t: 360, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 130, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } }
+        { t: 210, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } }
       ]
     },
 
     strongSlash: {
       name: 'strongSlash',
       tags: ['attack'],
-      totalMs: 600,
-      strikeMs: 320,
+      totalMs: 700,
+      strikeMs: 390,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeInOut' },
-        { t: 230, pose: P.strongSlashWindup, ease: 'easeInOut' }, // Heavy slow windup
-        { t: 320, pose: P.strongSlashStrike, ease: 'easeOut' },   // Crushing 90ms strike
-        { t: 380, pose: P.strongSlashStrike, ease: 'linear' },   // Heavy contact pause
-        { t: 480, pose: P.slashRecover, ease: 'easeOut' },
-        { t: 600, pose: P.idle, ease: 'easeOut' }
+        { t: 280, pose: P.strongSlashWindup, ease: 'easeInOut' }, // Lean-back windup (280ms)
+        { t: 390, pose: P.strongSlashStrike, ease: 'easeOut' },   // Crushing 110ms strike with forward step
+        { t: 470, pose: P.strongSlashStrike, ease: 'linear' },   // 80ms hit-stop contact pause
+        { t: 580, pose: P.slashRecover, ease: 'easeOut' },
+        { t: 700, pose: P.idle, ease: 'easeOut' }                // 220ms recovery
       ],
       events: [
-        { t: 320, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } }
+        { t: 390, name: 'strike', data: { strikeIndex: 0, tag: 'heavy' } }
       ]
     },
 
     comboHeavy: {
       name: 'comboHeavy',
       tags: ['attack'],
-      totalMs: 900,
-      strikeMs: 200,
-      strikeTimes: [200, 480, 750],
+      totalMs: 1400,
+      strikeMs: 300,
+      strikeTimes: [300, 650, 1050],
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeInOut' },
-        { t: 120, pose: P.slashWindup, ease: 'easeInOut' },
-        { t: 200, pose: P.comboSlash1, ease: 'easeOut' }, // Hit 1
-        { t: 360, pose: P.tellH, ease: 'easeInOut' },
-        { t: 480, pose: P.comboSlash2, ease: 'easeOut' }, // Hit 2
-        { t: 640, pose: P.tellV, ease: 'easeInOut' },
-        { t: 750, pose: P.comboOverhead, ease: 'easeOut' }, // Hit 3
-        { t: 810, pose: P.comboOverhead, ease: 'linear' }, // Final pause
-        { t: 900, pose: P.idle, ease: 'easeOut' }
+        { t: 180, pose: P.slashWindup, ease: 'easeInOut' },
+        { t: 300, pose: P.comboSlash1, ease: 'easeOut' }, // Hit 1 (slash)
+        { t: 360, pose: P.comboSlash1, ease: 'linear' },
+        { t: 500, pose: P.tellH, ease: 'easeInOut' },
+        { t: 650, pose: P.comboSlash2, ease: 'easeOut' }, // Hit 2 (backhand)
+        { t: 720, pose: P.comboSlash2, ease: 'linear' },
+        { t: 900, pose: P.tellV, ease: 'easeInOut' },
+        { t: 1050, pose: P.comboOverhead, ease: 'easeOut' }, // Hit 3 (overhead)
+        { t: 1150, pose: P.comboOverhead, ease: 'linear' }, // Final heavy contact pause
+        { t: 1280, pose: P.slashRecover, ease: 'easeOut' },
+        { t: 1400, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 200, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } },
-        { t: 480, name: 'strike', data: { strikeIndex: 1, tag: 'strike' } },
-        { t: 750, name: 'strike', data: { strikeIndex: 2, tag: 'strike' } }
+        { t: 300, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } },
+        { t: 650, name: 'strike', data: { strikeIndex: 1, tag: 'strike' } },
+        { t: 1050, name: 'strike', data: { strikeIndex: 2, tag: 'heavy' } }
       ]
     },
 
     stumble: {
       name: 'stumble',
       tags: ['reaction'],
-      totalMs: 650,
+      totalMs: 1000,
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 120, pose: P.stumbleWindup, ease: 'easeInOut' },
-        { t: 320, pose: P.stumbleOverbalance, ease: 'easeInOut' },
-        { t: 500, pose: P.stumbleRecover, ease: 'easeInOut' },
-        { t: 650, pose: P.idle, ease: 'easeOut' }
+        { t: 200, pose: P.stumbleWindup, ease: 'easeInOut' },
+        { t: 500, pose: P.stumbleOverbalance, ease: 'easeInOut' }, // Lean 42, dx 22
+        { t: 780, pose: P.stumbleRecover, ease: 'easeInOut' },
+        { t: 1000, pose: P.idle, ease: 'easeOut' }
       ],
       events: []
     },

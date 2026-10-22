@@ -137,33 +137,33 @@ window.CF = window.CF || {};
       description: 'Cinematic slam banner, deep charge, high leap, ground crash'
     },
     riposte: {
-      totalMs: 700,
-      strikeMs: 420,
+      totalMs: 900,
+      strikeMs: 600,
       persistent: false,
       tags: ['attack', 'block'],
-      description: 'Defensive parry followed by 360-degree counter spin'
+      description: 'Defensive parry followed by 360-degree counter spin (spec: 900ms, parry: 150ms, strike: 600ms)'
     },
     spinSlash: {
-      totalMs: 650,
-      strikeMs: 180,
-      strikeTimes: [180, 360, 520],
+      totalMs: 900,
+      strikeMs: 300,
+      strikeTimes: [300, 560],
       persistent: false,
       tags: ['attack'],
-      description: 'Triple full-body 360 airborne spin slice'
+      description: 'Full 360-degree spin horizontal slash (spec: 900ms, strikes: 300, 560ms)'
     },
     backflipEvade: {
-      totalMs: 600,
+      totalMs: 650,
       strikeMs: null,
       persistent: false,
       tags: ['dodge'],
-      description: 'Acrobatic backflip leap backwards (universal dodge)'
+      description: 'Acrobatic backflip leap backwards with full rotation (spec: 650ms)'
     },
     dashThrust: {
-      totalMs: 500,
-      strikeMs: 220,
+      totalMs: 700,
+      strikeMs: 200,
       persistent: false,
       tags: ['attack'],
-      description: 'High-speed forward lunge thrust'
+      description: 'High-speed forward lunge thrust (spec: 700ms, strike: 200ms)'
     },
     focus: {
       totalMs: 1500,
@@ -737,80 +737,81 @@ window.CF = window.CF || {};
     },
 
     // -------------------------------------------------------------------------
-    // 5. GROUP 3 MOVES
+    // 5. GROUP 3 MOVES (Original Spec Durations & Easing)
     // -------------------------------------------------------------------------
     riposte: {
       name: 'riposte',
       tags: ['attack', 'block'],
-      totalMs: 700,
-      strikeMs: 420,
+      totalMs: 900,
+      strikeMs: 600,
       keyframes: [
         { t: 0, pose: P.block, ease: 'easeOut' },
-        { t: 120, pose: P.riposteParry, ease: 'easeInOut' },
-        { t: 280, pose: P.riposteSpin, ease: 'linear' },
-        { t: 420, pose: P.riposteCounter, ease: 'easeOut' },
-        { t: 560, pose: P.slashRecover, ease: 'easeInOut' },
-        { t: 700, pose: P.idle, ease: 'easeOut' }
+        { t: 150, pose: P.riposteParry, ease: 'easeInOut' },    // Catch attack at 150ms
+        { t: 400, pose: P.riposteSpin, ease: 'linear' },        // Stagger & spin-step
+        { t: 600, pose: P.riposteCounter, ease: 'easeOut' },     // Counter-slash strike at 600ms
+        { t: 680, pose: P.riposteCounter, ease: 'linear' },     // Contact pause
+        { t: 780, pose: P.slashRecover, ease: 'easeInOut' },
+        { t: 900, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 120, name: 'parry', data: {} },
-        { t: 420, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } }
+        { t: 150, name: 'parry', data: {} },
+        { t: 600, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } }
       ]
     },
 
     spinSlash: {
       name: 'spinSlash',
       tags: ['attack'],
-      totalMs: 650,
-      strikeMs: 180,
-      strikeTimes: [180, 360, 520],
+      totalMs: 900,
+      strikeMs: 300,
+      strikeTimes: [300, 560],
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeIn' },
-        { t: 180, pose: P.spinSlashSpin1, ease: 'linear' },
-        { t: 360, pose: P.spinSlashSpin2, ease: 'linear' },
-        { t: 520, pose: P.spinSlashSpin3, ease: 'easeOut' },
-        { t: 650, pose: P.idle, ease: 'easeOut' }
+        { t: 140, pose: P.slashWindup, ease: 'easeInOut' },
+        { t: 300, pose: P.spinSlashSpin1, ease: 'linear' },     // Strike 1 at 300ms
+        { t: 560, pose: P.spinSlashSpin2, ease: 'linear' },     // Strike 2 at 560ms
+        { t: 720, pose: P.spinSlashSpin3, ease: 'easeOut' },     // 360 degree spin completion
+        { t: 900, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 180, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } },
-        { t: 360, name: 'strike', data: { strikeIndex: 1, tag: 'strike' } },
-        { t: 520, name: 'strike', data: { strikeIndex: 2, tag: 'strike' } }
+        { t: 300, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } },
+        { t: 560, name: 'strike', data: { strikeIndex: 1, tag: 'strike' } }
       ]
     },
 
     backflipEvade: {
       name: 'backflipEvade',
       tags: ['dodge'],
-      totalMs: 600,
+      totalMs: 650,
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeIn' },
-        { t: 80, pose: P.jumpCrouch, ease: 'easeOut' },
-        { t: 300, pose: P.backflipTuck, ease: 'linear' },
-        { t: 480, pose: P.backflipLand, ease: 'easeOut' },
-        { t: 600, pose: P.idle, ease: 'easeOut' }
+        { t: 90, pose: P.jumpCrouch, ease: 'easeOut' },
+        { t: 320, pose: P.backflipTuck, ease: 'linear' },       // Full tuck at -180 deg
+        { t: 520, pose: P.backflipLand, ease: 'easeOut' },      // Landing at -360 deg
+        { t: 650, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 480, name: 'land', data: { count: 4 } }
+        { t: 520, name: 'land', data: { count: 4 } }
       ]
     },
 
     dashThrust: {
       name: 'dashThrust',
       tags: ['attack'],
-      totalMs: 500,
-      strikeMs: 220,
+      totalMs: 700,
+      strikeMs: 200,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeIn' },
-        { t: 80, pose: P.dashThrustDash, ease: 'easeIn' },
-        { t: 220, pose: P.dashThrustExtend, ease: 'easeOut' },
-        { t: 270, pose: P.dashThrustExtend, ease: 'linear' }, // Contact pause
-        { t: 370, pose: P.slashRecover, ease: 'easeInOut' },
-        { t: 500, pose: P.idle, ease: 'easeOut' }
+        { t: 160, pose: P.dashThrustDash, ease: 'easeIn' },      // Dash forward dx +120 in 160ms
+        { t: 200, pose: P.dashThrustExtend, ease: 'easeOut' },   // Thrust straight out (strike at 200ms)
+        { t: 350, pose: P.dashThrustExtend, ease: 'linear' },    // Hold 150ms
+        { t: 520, pose: P.slashRecover, ease: 'easeInOut' },     // Slide back
+        { t: 700, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 80, name: 'dust', data: { count: 3 } },
-        { t: 220, name: 'strike', data: { strikeIndex: 0, tag: 'thrust' } }
+        { t: 160, name: 'dust', data: { count: 3 } },
+        { t: 200, name: 'strike', data: { strikeIndex: 0, tag: 'thrust' } }
       ]
     },
 

@@ -1,49 +1,72 @@
-// anim/effects.js - Code Fighters Visual Effects Engine
+// anim/effects.js - Code Fighters Minimal Visual Effects Engine
 // Classic script format: attaches directly to window.CF
+// Follows anim/STYLE.md Rule 8 (Minimal effects only) & Rule 7 (No jitter).
 window.CF = window.CF || {};
 
 (function () {
   'use strict';
 
-  const MAX_PARTICLES = 120;
-  const MAX_FLOATING_TEXTS = 8;
-  const MAX_SHOCKWAVES = 6;
-  const MAX_TRAIL_POINTS = 16;
+  const MAX_SPARKS = 24;
+  const MAX_DUST = 20;
+  const MAX_SHARDS = 20;
+  const MAX_TEXTS = 6;
+  const MAX_SHOCKWAVES = 4;
+  const MAX_TRAIL_POINTS = 5; // Short trail (Rule 8)
 
-  // Pre-allocated particle entity
-  function Particle() {
+  // Starburst spark entity: draws 4 to 6 short lines radiating from center
+  function StarSpark() {
+    this.active = false;
+    this.x = 0;
+    this.y = 0;
+    this.color = '#EF9F27';
+    this.life = 0;
+    this.maxLife = 140; // ms (fast, crisp fade)
+    this.rays = 5;
+    this.rayLength = 8;
+    this.angleOffset = 0;
+  }
+
+  // Dust particle
+  function DustParticle() {
     this.active = false;
     this.x = 0;
     this.y = 0;
     this.vx = 0;
     this.vy = 0;
-    this.gravity = 0;
     this.life = 0;
-    this.maxLife = 1;
+    this.maxLife = 200; // ms
     this.size = 2;
-    this.color = '#FFFFFF';
-    this.alpha = 1;
-    this.decay = 0.96;
-    this.type = 'spark'; // 'spark' | 'dust' | 'shard'
-    this.rotation = 0;
-    this.vRot = 0;
+    this.color = '#94A3B8';
   }
 
-  // Pre-allocated floating text entity
-  function FloatingText() {
+  // Shield shard entity
+  function Shard() {
+    this.active = false;
+    this.x = 0;
+    this.y = 0;
+    this.vx = 0;
+    this.vy = 0;
+    this.rot = 0;
+    this.vRot = 0;
+    this.size = 3;
+    this.life = 0;
+    this.maxLife = 300;
+    this.color = '#38BDF8';
+  }
+
+  // Floating reaction word
+  function FloatingWord() {
     this.active = false;
     this.text = '';
     this.x = 0;
     this.y = 0;
-    this.vy = -0.8;
+    this.startY = 0;
     this.life = 0;
-    this.maxLife = 600; // ms
+    this.maxLife = 400; // ms (fades quickly)
     this.color = '#F59E0B';
-    this.fontSize = 14;
-    this.alpha = 1;
   }
 
-  // Pre-allocated expanding shockwave ring
+  // Shockwave ring
   function Shockwave() {
     this.active = false;
     this.x = 0;
@@ -51,26 +74,41 @@ window.CF = window.CF || {};
     this.radius = 0;
     this.maxRadius = 70;
     this.life = 0;
-    this.maxLife = 400; // ms
-    this.color = '#F59E0B';
-    this.lineWidth = 3;
-    this.alpha = 1;
+    this.maxLife = 350;
+    this.color = '#EF4444';
   }
 
   function EffectsManager() {
-    // Particle pool
-    this.particles = [];
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      this.particles.push(new Particle());
+    // Extra FX toggle (OFF by default as required by Rule 8)
+    this.extraFx = false;
+
+    // Spark starburst pool
+    this.sparks = [];
+    for (let i = 0; i < MAX_SPARKS; i++) {
+      this.sparks.push(new StarSpark());
     }
-    this.particleCursor = 0;
+    this.sparkCursor = 0;
+
+    // Dust pool
+    this.dust = [];
+    for (let i = 0; i < MAX_DUST; i++) {
+      this.dust.push(new DustParticle());
+    }
+    this.dustCursor = 0;
+
+    // Shield shard pool
+    this.shards = [];
+    for (let i = 0; i < MAX_SHARDS; i++) {
+      this.shards.push(new Shard());
+    }
+    this.shardCursor = 0;
 
     // Floating text pool
-    this.floatingTexts = [];
-    for (let i = 0; i < MAX_FLOATING_TEXTS; i++) {
-      this.floatingTexts.push(new FloatingText());
+    this.floatingWords = [];
+    for (let i = 0; i < MAX_TEXTS; i++) {
+      this.floatingWords.push(new FloatingWord());
     }
-    this.textCursor = 0;
+    this.wordCursor = 0;
 
     // Shockwave pool
     this.shockwaves = [];
@@ -79,22 +117,22 @@ window.CF = window.CF || {};
     }
     this.shockwaveCursor = 0;
 
-    // Screen Shake
+    // Screen Shake (Controlled impulse, decaying quickly without random jitter)
     this.shakeTimer = 0;
     this.shakeDuration = 0;
     this.shakeIntensity = 0;
     this.shakeOffsetX = 0;
     this.shakeOffsetY = 0;
 
-    // Hit Stop (brief freeze frame on impact)
+    // Hit-Stop timer (ms)
     this.hitStopTimer = 0;
 
-    // Screen Flash
+    // Screen flash (used only if extraFx is on)
     this.flashTimer = 0;
     this.flashDuration = 0;
-    this.flashColor = 'rgba(255, 255, 255, 0.4)';
+    this.flashColor = 'rgba(255, 255, 255, 0.3)';
 
-    // Special Slam Cinematic Banner
+    // Cinematic Slam Banner
     this.banner = {
       active: false,
       text: '',
@@ -103,115 +141,106 @@ window.CF = window.CF || {};
       duration: 0
     };
 
-    // Sword trails storage: maps fighter ID or instance to array of points
+    // Sword trails (short, only on strikes)
     this.trails = {};
   }
 
-  EffectsManager.prototype.getFreeParticle = function () {
-    for (let i = 0; i < this.particles.length; i++) {
-      const idx = (this.particleCursor + i) % this.particles.length;
-      if (!this.particles[idx].active) {
-        this.particleCursor = (idx + 1) % this.particles.length;
-        return this.particles[idx];
-      }
-    }
-    // Recycle oldest
-    const victim = this.particles[this.particleCursor];
-    this.particleCursor = (this.particleCursor + 1) % this.particles.length;
-    return victim;
+  // --- Effect Spawners ---
+
+  // Hit spark: small star of 4 to 6 short lines (Rule 8)
+  EffectsManager.prototype.addHitSpark = function (x, y, color) {
+    const s = this.sparks[this.sparkCursor];
+    this.sparkCursor = (this.sparkCursor + 1) % this.sparks.length;
+    s.active = true;
+    s.x = x;
+    s.y = y;
+    s.color = color || '#EF9F27';
+    s.life = 0;
+    s.maxLife = 140;
+    s.rays = 5;
+    s.rayLength = 9;
+    s.angleOffset = Math.random() * Math.PI;
   };
 
-  // --- Public Effect Spawners ---
+  // Blue block spark (Rule 8)
+  EffectsManager.prototype.addBlockSpark = function (x, y) {
+    const s = this.sparks[this.sparkCursor];
+    this.sparkCursor = (this.sparkCursor + 1) % this.sparks.length;
+    s.active = true;
+    s.x = x;
+    s.y = y;
+    s.color = '#38BDF8';
+    s.life = 0;
+    s.maxLife = 130;
+    s.rays = 5;
+    s.rayLength = 8;
+    s.angleOffset = Math.random() * Math.PI;
+  };
 
-  // Spark burst (e.g. sword clash, weapon hit)
+  // Backwards compatibility alias
   EffectsManager.prototype.addSparks = function (x, y, count, color) {
-    count = count || 12;
-    color = color || '#EF9F27';
-    for (let i = 0; i < count; i++) {
-      const p = this.getFreeParticle();
-      p.active = true;
-      p.type = 'spark';
-      p.x = x;
-      p.y = y;
-      const angle = (Math.random() * Math.PI * 2);
-      const speed = 1.5 + Math.random() * 4.5;
-      p.vx = Math.cos(angle) * speed;
-      p.vy = Math.sin(angle) * speed - 0.5;
-      p.gravity = 0.12;
-      p.life = 0;
-      p.maxLife = 200 + Math.random() * 250;
-      p.size = 1.5 + Math.random() * 2;
-      p.color = color;
-      p.alpha = 1;
-      p.decay = 0.94;
+    if (color && color.indexOf('38BDF8') !== -1) {
+      this.addBlockSpark(x, y);
+    } else {
+      this.addHitSpark(x, y, color);
     }
   };
 
-  // Dust puff (e.g. landing, jumping, dash)
-  EffectsManager.prototype.addDust = function (x, y, count, color) {
-    count = count || 6;
-    color = color || 'rgba(160, 174, 192, 0.6)';
+  // Small dust puffs on steps and landings (3-5 tiny dots)
+  EffectsManager.prototype.addDust = function (x, y, count) {
+    count = Math.min(count || 4, 5);
     for (let i = 0; i < count; i++) {
-      const p = this.getFreeParticle();
+      const p = this.dust[this.dustCursor];
+      this.dustCursor = (this.dustCursor + 1) % this.dust.length;
       p.active = true;
-      p.type = 'dust';
-      p.x = x + (Math.random() - 0.5) * 14;
-      p.y = y + (Math.random() - 0.5) * 4;
-      p.vx = (Math.random() - 0.5) * 1.8;
-      p.vy = -0.3 - Math.random() * 1.0;
-      p.gravity = -0.01; // drifts slightly up
+      p.x = x + (Math.random() - 0.5) * 12;
+      p.y = y - 1;
+      p.vx = (Math.random() - 0.5) * 1.2;
+      p.vy = -0.3 - Math.random() * 0.6;
       p.life = 0;
-      p.maxLife = 250 + Math.random() * 200;
-      p.size = 2.5 + Math.random() * 3.5;
-      p.color = color;
-      p.alpha = 0.7;
-      p.decay = 0.95;
+      p.maxLife = 180 + Math.random() * 60;
+      p.size = 2;
+      p.color = '#94A3B8';
     }
   };
 
   // Shield shard explosion on shieldBreak()
-  EffectsManager.prototype.addShieldShards = function (x, y, count, color) {
-    count = count || 18;
-    color = color || '#38BDF8';
+  EffectsManager.prototype.addShieldShards = function (x, y, count) {
+    count = Math.min(count || 12, 16);
     for (let i = 0; i < count; i++) {
-      const p = this.getFreeParticle();
-      p.active = true;
-      p.type = 'shard';
-      p.x = x + (Math.random() - 0.5) * 20;
-      p.y = y + (Math.random() - 0.5) * 40;
+      const s = this.shards[this.shardCursor];
+      this.shardCursor = (this.shardCursor + 1) % this.shards.length;
+      s.active = true;
+      s.x = x + (Math.random() - 0.5) * 16;
+      s.y = y + (Math.random() - 0.5) * 30;
       const angle = (Math.random() * Math.PI * 2);
-      const speed = 2.0 + Math.random() * 5.0;
-      p.vx = Math.cos(angle) * speed;
-      p.vy = Math.sin(angle) * speed;
-      p.gravity = 0.15;
-      p.life = 0;
-      p.maxLife = 400 + Math.random() * 300;
-      p.size = 3.0 + Math.random() * 3.0;
-      p.color = color;
-      p.alpha = 1;
-      p.decay = 0.97;
-      p.rotation = Math.random() * Math.PI * 2;
-      p.vRot = (Math.random() - 0.5) * 0.3;
+      const speed = 1.8 + Math.random() * 3.5;
+      s.vx = Math.cos(angle) * speed;
+      s.vy = Math.sin(angle) * speed;
+      s.rot = Math.random() * Math.PI * 2;
+      s.vRot = (Math.random() - 0.5) * 0.2;
+      s.size = 3;
+      s.life = 0;
+      s.maxLife = 260 + Math.random() * 100;
+      s.color = '#38BDF8';
     }
   };
 
-  // Floating combat text ("HIT", "BLOCKED", "PARRIED", "DODGED", "FEINT!")
+  // Floating word (HIT, BLOCKED, DODGED, PARRY) fading quickly (Rule 8)
   EffectsManager.prototype.addFloatingText = function (text, x, y, color) {
-    const item = this.floatingTexts[this.textCursor];
-    this.textCursor = (this.textCursor + 1) % this.floatingTexts.length;
-    item.active = true;
-    item.text = text;
-    item.x = x;
-    item.y = y;
-    item.vy = -0.9;
-    item.life = 0;
-    item.maxLife = 700; // ms
-    item.color = color || '#F59E0B';
-    item.fontSize = 13;
-    item.alpha = 1;
+    const w = this.floatingWords[this.wordCursor];
+    this.wordCursor = (this.wordCursor + 1) % this.floatingWords.length;
+    w.active = true;
+    w.text = text;
+    w.x = x;
+    w.y = y;
+    w.startY = y;
+    w.life = 0;
+    w.maxLife = 400; // ms
+    w.color = color || '#F59E0B';
   };
 
-  // Expanding ground shockwave (e.g. Special Slam)
+  // Special shockwave ring (Rule 8)
   EffectsManager.prototype.addShockwave = function (x, y, maxRadius, color) {
     const sw = this.shockwaves[this.shockwaveCursor];
     this.shockwaveCursor = (this.shockwaveCursor + 1) % this.shockwaves.length;
@@ -219,63 +248,61 @@ window.CF = window.CF || {};
     sw.x = x;
     sw.y = y;
     sw.radius = 4;
-    sw.maxRadius = maxRadius || 75;
+    sw.maxRadius = maxRadius || 65;
     sw.life = 0;
-    sw.maxLife = 380;
+    sw.maxLife = 320;
     sw.color = color || '#EF4444';
-    sw.lineWidth = 3.5;
-    sw.alpha = 1;
   };
 
-  // Screen shake
+  // Screen shake (controlled impulse without continuous jitter)
   EffectsManager.prototype.shake = function (intensity, durationMs) {
-    this.shakeIntensity = Math.max(this.shakeIntensity, intensity || 5);
-    this.shakeDuration = Math.max(this.shakeDuration, durationMs || 200);
+    this.shakeIntensity = Math.min(intensity || 4, 6);
+    this.shakeDuration = durationMs || 140;
     this.shakeTimer = this.shakeDuration;
   };
 
-  // Screen flash
+  // Screen flash (only active when extraFx is enabled)
   EffectsManager.prototype.flash = function (color, durationMs) {
-    this.flashColor = color || 'rgba(255, 255, 255, 0.4)';
+    if (!this.extraFx) return;
+    this.flashColor = color || 'rgba(255, 255, 255, 0.25)';
     this.flashDuration = durationMs || 100;
     this.flashTimer = this.flashDuration;
   };
 
-  // Hit stop freeze frame
+  // Hit-stop freeze frame
   EffectsManager.prototype.hitStop = function (durationMs) {
-    this.hitStopTimer = durationMs || 60;
+    this.hitStopTimer = durationMs || 70;
   };
 
   EffectsManager.prototype.isHitStopActive = function () {
     return this.hitStopTimer > 0;
   };
 
-  // Special slam dramatic banner across the screen
+  // Slam banner (Rule 8)
   EffectsManager.prototype.showBanner = function (text, subtext, durationMs) {
     this.banner.active = true;
     this.banner.text = text || 'SPECIAL SLAM';
-    this.banner.subtext = subtext || 'MAXIMUM IMPACT';
+    this.banner.subtext = subtext || 'IMPACT';
     this.banner.elapsed = 0;
-    this.banner.duration = durationMs || 420;
+    this.banner.duration = durationMs || 400;
   };
 
   EffectsManager.prototype.isBannerActive = function () {
     return this.banner.active;
   };
 
-  // Sword Trail management
-  EffectsManager.prototype.recordTrailPoint = function (id, x, y, active) {
+  // Sword trail: short, fading, only on strikes (Rule 8)
+  EffectsManager.prototype.recordTrailPoint = function (id, x, y, isStriking) {
     if (!this.trails[id]) {
       this.trails[id] = [];
     }
     const trail = this.trails[id];
-    if (active) {
-      trail.push({ x: x, y: y, alpha: 1 });
+    if (isStriking) {
+      trail.push({ x: x, y: y, alpha: 1.0 });
       if (trail.length > MAX_TRAIL_POINTS) {
         trail.shift();
       }
     } else {
-      // Fade out remaining
       if (trail.length > 0) {
         trail.shift();
       }
@@ -290,15 +317,14 @@ window.CF = window.CF || {};
 
   // --- Update Loop (dtMs) ---
   EffectsManager.prototype.update = function (dtMs) {
-    // 1. Hit stop timer
+    // 1. Hit-stop check
     if (this.hitStopTimer > 0) {
       this.hitStopTimer -= dtMs;
       if (this.hitStopTimer < 0) this.hitStopTimer = 0;
-      // When hitstop is active, do not advance particles
       return;
     }
 
-    // 2. Banner update
+    // 2. Banner
     if (this.banner.active) {
       this.banner.elapsed += dtMs;
       if (this.banner.elapsed >= this.banner.duration) {
@@ -306,14 +332,16 @@ window.CF = window.CF || {};
       }
     }
 
-    // 3. Screen shake calculation
+    // 3. Screen shake (fast decay without jitter)
     if (this.shakeTimer > 0) {
       this.shakeTimer -= dtMs;
       const progress = 1 - (this.shakeTimer / this.shakeDuration);
       const decay = 1 - progress;
-      const currentAmp = this.shakeIntensity * decay;
-      this.shakeOffsetX = (Math.random() - 0.5) * 2 * currentAmp;
-      this.shakeOffsetY = (Math.random() - 0.5) * 2 * currentAmp;
+      const amp = this.shakeIntensity * decay;
+      // Controlled directional impulse, not random white noise
+      const sign = (Math.floor(this.shakeTimer / 30) % 2 === 0) ? 1 : -1;
+      this.shakeOffsetX = sign * amp * 0.8;
+      this.shakeOffsetY = -sign * amp * 0.4;
       if (this.shakeTimer <= 0) {
         this.shakeOffsetX = 0;
         this.shakeOffsetY = 0;
@@ -324,241 +352,268 @@ window.CF = window.CF || {};
       this.shakeOffsetY = 0;
     }
 
-    // 4. Flash timer
+    // 4. Flash
     if (this.flashTimer > 0) {
       this.flashTimer -= dtMs;
       if (this.flashTimer < 0) this.flashTimer = 0;
     }
 
-    // 5. Update Particles
-    const dtSec = dtMs / 1000;
-    for (let i = 0; i < this.particles.length; i++) {
-      const p = this.particles[i];
-      if (!p.active) continue;
-
-      p.life += dtMs;
-      if (p.life >= p.maxLife) {
-        p.active = false;
-        continue;
+    // 5. Star Sparks
+    for (let i = 0; i < this.sparks.length; i++) {
+      const s = this.sparks[i];
+      if (!s.active) continue;
+      s.life += dtMs;
+      if (s.life >= s.maxLife) {
+        s.active = false;
       }
-
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += p.gravity;
-      p.vx *= p.decay;
-      p.vy *= p.decay;
-      p.rotation += p.vRot;
-
-      const progress = p.life / p.maxLife;
-      p.alpha = Math.max(0, 1 - progress);
     }
 
-    // 6. Update Floating Text
-    for (let i = 0; i < this.floatingTexts.length; i++) {
-      const item = this.floatingTexts[i];
-      if (!item.active) continue;
-
-      item.life += dtMs;
-      if (item.life >= item.maxLife) {
-        item.active = false;
+    // 6. Dust
+    for (let i = 0; i < this.dust.length; i++) {
+      const d = this.dust[i];
+      if (!d.active) continue;
+      d.life += dtMs;
+      if (d.life >= d.maxLife) {
+        d.active = false;
         continue;
       }
-
-      item.y += item.vy;
-      const progress = item.life / item.maxLife;
-      item.alpha = Math.max(0, 1 - (progress * progress)); // fade near end
+      d.x += d.vx;
+      d.y += d.vy;
     }
 
-    // 7. Update Shockwaves
+    // 7. Shards
+    for (let i = 0; i < this.shards.length; i++) {
+      const s = this.shards[i];
+      if (!s.active) continue;
+      s.life += dtMs;
+      if (s.life >= s.maxLife) {
+        s.active = false;
+        continue;
+      }
+      s.x += s.vx;
+      s.y += s.vy;
+      s.vy += 0.15; // gravity
+      s.rot += s.vRot;
+    }
+
+    // 8. Floating Words
+    for (let i = 0; i < this.floatingWords.length; i++) {
+      const w = this.floatingWords[i];
+      if (!w.active) continue;
+      w.life += dtMs;
+      if (w.life >= w.maxLife) {
+        w.active = false;
+        continue;
+      }
+      const p = w.life / w.maxLife;
+      w.y = w.startY - p * 16;
+    }
+
+    // 9. Shockwaves
     for (let i = 0; i < this.shockwaves.length; i++) {
       const sw = this.shockwaves[i];
       if (!sw.active) continue;
-
       sw.life += dtMs;
       if (sw.life >= sw.maxLife) {
         sw.active = false;
         continue;
       }
-
-      const progress = sw.life / sw.maxLife;
-      sw.radius = sw.maxRadius * progress;
-      sw.alpha = Math.max(0, 1 - progress);
+      const p = sw.life / sw.maxLife;
+      sw.radius = sw.maxRadius * p;
     }
 
-    // 8. Decay trails
+    // 10. Trails
     for (const id in this.trails) {
       const trail = this.trails[id];
       for (let i = 0; i < trail.length; i++) {
-        trail[i].alpha *= 0.88;
+        trail[i].alpha *= 0.82;
       }
     }
   };
 
-  // --- Drawing System ---
+  // --- Rendering ---
+  function r05(v) {
+    return Math.round(v * 2) * 0.5;
+  }
 
-  // Apply screen shake to context before rendering world
   EffectsManager.prototype.applyCamera = function (ctx) {
     ctx.save();
     if (this.shakeOffsetX !== 0 || this.shakeOffsetY !== 0) {
-      ctx.translate(this.shakeOffsetX, this.shakeOffsetY);
+      ctx.translate(r05(this.shakeOffsetX), r05(this.shakeOffsetY));
     }
   };
 
-  // Restore camera after rendering world
   EffectsManager.prototype.restoreCamera = function (ctx) {
     ctx.restore();
   };
 
-  // Draw background effects (shockwaves, floor dust)
+  // Draw background effects (Shockwave ring on floor)
   EffectsManager.prototype.drawBackground = function (ctx) {
-    // Shockwaves on the ground
     for (let i = 0; i < this.shockwaves.length; i++) {
       const sw = this.shockwaves[i];
-      if (!sw.active || sw.alpha <= 0) continue;
+      if (!sw.active) continue;
+      const alpha = Math.max(0, 1 - sw.life / sw.maxLife);
 
       ctx.save();
       ctx.beginPath();
-      // Draw as flat oval on floor
-      ctx.ellipse(sw.x, sw.y, sw.radius, sw.radius * 0.35, 0, 0, Math.PI * 2);
+      ctx.ellipse(r05(sw.x), r05(sw.y), r05(sw.radius), r05(sw.radius * 0.3), 0, 0, Math.PI * 2);
       ctx.strokeStyle = sw.color;
-      ctx.lineWidth = sw.lineWidth * (1 - sw.life / sw.maxLife);
-      ctx.globalAlpha = sw.alpha * 0.85;
+      ctx.lineWidth = 2.5;
+      ctx.globalAlpha = alpha;
       ctx.stroke();
       ctx.restore();
     }
   };
 
-  // Draw sword trails
-  EffectsManager.prototype.drawTrails = function (ctx, color) {
-    color = color || '#EF9F27';
+  // Draw short fading sword trail (Rule 8)
+  EffectsManager.prototype.drawTrails = function (ctx, defaultColor) {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
     for (const id in this.trails) {
       const trail = this.trails[id];
       if (trail.length < 2) continue;
 
-      ctx.save();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
       for (let i = 1; i < trail.length; i++) {
         const p1 = trail[i - 1];
         const p2 = trail[i];
         const alpha = Math.min(p1.alpha, p2.alpha);
-        if (alpha <= 0.02) continue;
+        if (alpha <= 0.05) continue;
 
         ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1 + (i / trail.length) * 4;
-        ctx.globalAlpha = alpha * 0.7;
+        ctx.moveTo(r05(p1.x), r05(p1.y));
+        ctx.lineTo(r05(p2.x), r05(p2.y));
+        ctx.strokeStyle = defaultColor || '#EF9F27';
+        ctx.lineWidth = 2 + (i / trail.length) * 2;
+        ctx.globalAlpha = alpha * 0.6;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  };
+
+  // Draw minimal particles: Star sparks, dust puffs, shield shards
+  EffectsManager.prototype.drawParticles = function (ctx) {
+    ctx.save();
+
+    // 1. Star sparks (small star of 4-6 lines)
+    for (let i = 0; i < this.sparks.length; i++) {
+      const s = this.sparks[i];
+      if (!s.active) continue;
+      const alpha = Math.max(0, 1 - s.life / s.maxLife);
+      const r = s.rayLength * (0.5 + 0.5 * (s.life / s.maxLife));
+
+      ctx.save();
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = alpha;
+      const cx = r05(s.x);
+      const cy = r05(s.y);
+
+      for (let j = 0; j < s.rays; j++) {
+        const angle = s.angleOffset + (j * Math.PI * 2) / s.rays;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(r05(cx + Math.cos(angle) * r), r05(cy + Math.sin(angle) * r));
         ctx.stroke();
       }
       ctx.restore();
     }
-  };
 
-  // Draw particles (sparks, dust, shards)
-  EffectsManager.prototype.drawParticles = function (ctx) {
-    for (let i = 0; i < this.particles.length; i++) {
-      const p = this.particles[i];
-      if (!p.active || p.alpha <= 0.02) continue;
+    // 2. Dust puffs
+    for (let i = 0; i < this.dust.length; i++) {
+      const d = this.dust[i];
+      if (!d.active) continue;
+      const alpha = Math.max(0, 1 - d.life / d.maxLife);
 
       ctx.save();
-      ctx.globalAlpha = p.alpha;
-
-      if (p.type === 'spark') {
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (p.type === 'dust') {
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (p.type === 'shard') {
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rotation);
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.moveTo(-p.size, -p.size * 0.5);
-        ctx.lineTo(p.size, 0);
-        ctx.lineTo(-p.size * 0.3, p.size);
-        ctx.closePath();
-        ctx.fill();
-      }
-
+      ctx.fillStyle = d.color;
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.beginPath();
+      ctx.arc(r05(d.x), r05(d.y), d.size, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
-  };
 
-  // Draw floating combat text
-  EffectsManager.prototype.drawFloatingTexts = function (ctx) {
-    for (let i = 0; i < this.floatingTexts.length; i++) {
-      const item = this.floatingTexts[i];
-      if (!item.active || item.alpha <= 0.02) continue;
+    // 3. Shield shards
+    for (let i = 0; i < this.shards.length; i++) {
+      const sh = this.shards[i];
+      if (!sh.active) continue;
+      const alpha = Math.max(0, 1 - sh.life / sh.maxLife);
 
       ctx.save();
-      ctx.globalAlpha = item.alpha;
-      ctx.font = 'bold ' + item.fontSize + 'px monospace, sans-serif';
+      ctx.translate(r05(sh.x), r05(sh.y));
+      ctx.rotate(sh.rot);
+      ctx.strokeStyle = sh.color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(-sh.size, -sh.size * 0.5);
+      ctx.lineTo(sh.size, 0);
+      ctx.lineTo(0, sh.size);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.restore();
+  };
+
+  // Draw floating reaction word (Rule 8: one word, fades quickly)
+  EffectsManager.prototype.drawFloatingTexts = function (ctx) {
+    for (let i = 0; i < this.floatingWords.length; i++) {
+      const w = this.floatingWords[i];
+      if (!w.active) continue;
+      const alpha = Math.max(0, 1 - w.life / w.maxLife);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = 'bold 12px ui-monospace, Menlo, Consolas, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      // Outline
-      ctx.strokeStyle = '#0F172A';
-      ctx.lineWidth = 3;
-      ctx.strokeText(item.text, item.x, item.y);
-
-      // Text
-      ctx.fillStyle = item.color;
-      ctx.fillText(item.text, item.x, item.y);
+      // Crisp text
+      ctx.fillStyle = w.color;
+      ctx.fillText(w.text, r05(w.x), r05(w.y));
       ctx.restore();
     }
   };
 
-  // Draw glowing shield dome around fighter
-  EffectsManager.prototype.drawShieldDome = function (ctx, x, y, radius, color, breath) {
+  // Draw clean shield dome (Rule 8)
+  EffectsManager.prototype.drawShieldDome = function (ctx, x, y, radius, color) {
     radius = radius || 38;
     color = color || '#38BDF8';
-    breath = breath || 0;
-
-    const pulse = 1 + Math.sin(breath * 4) * 0.05;
-    const r = radius * pulse;
 
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(r05(x), r05(y));
 
-    // Outer glow ring
+    // Clean outer ring
     ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.strokeStyle = color;
     ctx.lineWidth = 2.5;
-    ctx.globalAlpha = 0.7 + Math.sin(breath * 4) * 0.2;
+    ctx.globalAlpha = 0.8;
     ctx.stroke();
 
-    // Translucent fill
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.12 + Math.sin(breath * 4) * 0.04;
-    ctx.fill();
-
-    // Small hexagonal energy facets
+    // Subtle 6-facet inner lines
     ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = 0.25;
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 3) {
-      const ex = Math.cos(a) * r;
-      const ey = Math.sin(a) * r;
       ctx.beginPath();
       ctx.moveTo(0, 0);
-      ctx.lineTo(ex, ey);
+      ctx.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
       ctx.stroke();
     }
 
     ctx.restore();
   };
 
-  // Draw full-canvas post-processing: screen flash and special slam cinematic banner
+  // Post-processing overlay: screen flash (if extraFx) and special slam banner
   EffectsManager.prototype.drawOverlay = function (ctx, width, height) {
-    // 1. Flash
-    if (this.flashTimer > 0) {
+    // 1. Flash (only if extraFx is on)
+    if (this.extraFx && this.flashTimer > 0) {
       const alpha = this.flashTimer / this.flashDuration;
       ctx.save();
       ctx.fillStyle = this.flashColor;
@@ -570,69 +625,62 @@ window.CF = window.CF || {};
     // 2. Cinematic Slam Banner
     if (this.banner.active) {
       const progress = this.banner.elapsed / this.banner.duration;
-      // Animate letterbox height (0 to 32px)
-      let barH = 32;
+      let barH = 28;
       let alpha = 1;
       if (progress < 0.2) {
         const k = progress / 0.2;
-        barH = 32 * k;
+        barH = 28 * k;
         alpha = k;
       } else if (progress > 0.8) {
         const k = (1 - progress) / 0.2;
-        barH = 32 * k;
+        barH = 28 * k;
         alpha = k;
       }
 
       ctx.save();
 
       // Top and bottom letterbox bars
-      ctx.fillStyle = '#090D16';
+      ctx.fillStyle = '#05070B';
       ctx.fillRect(0, 0, width, barH);
       ctx.fillRect(0, height - barH, width, barH);
 
       // Center banner strip
       const midY = height / 2;
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-      ctx.fillRect(0, midY - 26, width, 52);
+      ctx.fillStyle = 'rgba(10, 15, 26, 0.85)';
+      ctx.fillRect(0, midY - 24, width, 48);
 
-      // Gold accent lines
+      // Accent border
       ctx.strokeStyle = '#EF4444';
       ctx.lineWidth = 2;
       ctx.globalAlpha = alpha;
       ctx.beginPath();
-      ctx.moveTo(0, midY - 26);
-      ctx.lineTo(width, midY - 26);
-      ctx.moveTo(0, midY + 26);
-      ctx.lineTo(width, midY + 26);
+      ctx.moveTo(0, midY - 24);
+      ctx.lineTo(width, midY - 24);
+      ctx.moveTo(0, midY + 24);
+      ctx.lineTo(width, midY + 24);
       ctx.stroke();
 
-      // Banner text
+      // Text
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font = 'bold 20px monospace, sans-serif';
+      ctx.font = 'bold 18px ui-monospace, Menlo, Consolas, monospace';
       ctx.fillStyle = '#F8FAFC';
-      ctx.fillText(this.banner.text, width / 2, midY - 4);
+      ctx.fillText(this.banner.text, width / 2, midY - 3);
 
-      // Subtext
-      ctx.font = '11px monospace, sans-serif';
+      ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
       ctx.fillStyle = '#EF4444';
-      ctx.fillText(this.banner.subtext, width / 2, midY + 14);
+      ctx.fillText(this.banner.subtext, width / 2, midY + 12);
 
       ctx.restore();
     }
   };
 
-  // Clear everything
   EffectsManager.prototype.clear = function () {
-    for (let i = 0; i < this.particles.length; i++) {
-      this.particles[i].active = false;
-    }
-    for (let i = 0; i < this.floatingTexts.length; i++) {
-      this.floatingTexts[i].active = false;
-    }
-    for (let i = 0; i < this.shockwaves.length; i++) {
-      this.shockwaves[i].active = false;
-    }
+    for (let i = 0; i < this.sparks.length; i++) this.sparks[i].active = false;
+    for (let i = 0; i < this.dust.length; i++) this.dust[i].active = false;
+    for (let i = 0; i < this.shards.length; i++) this.shards[i].active = false;
+    for (let i = 0; i < this.floatingWords.length; i++) this.floatingWords[i].active = false;
+    for (let i = 0; i < this.shockwaves.length; i++) this.shockwaves[i].active = false;
     this.shakeTimer = 0;
     this.shakeIntensity = 0;
     this.shakeOffsetX = 0;
@@ -643,7 +691,6 @@ window.CF = window.CF || {};
     this.trails = {};
   };
 
-  // Singleton instance available on CF.Effects
   const effectsInstance = new EffectsManager();
   CF.Effects = effectsInstance;
   CF.EffectsManager = EffectsManager;

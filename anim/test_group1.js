@@ -1,9 +1,9 @@
-// anim/test_group1.js - Automated Verification for Group 1 & Contract Adherence
+// anim/test_group1.js - Automated Verification for Group 1, Contract Adherence & Visual Pass
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-console.log('=== Running Code Fighters Group 1 Automated Verification ===\n');
+console.log('=== Running Code Fighters Automated Verification (Visual Pass) ===\n');
 
 // 1. Setup Node Window environment for classic scripts
 const window = {
@@ -139,7 +139,47 @@ assert(strikeFired, 'Strike fired at or through 180ms');
 f1.update(220);
 assert(f1.isBusy() === false, 'Fighter returns to idle after slash finishes');
 
-// 6. Test enemyAttack with Pending Direction Resolution (Addendum 3)
+// 6. Test 1.9s Identical-Pose Rule and 2.4s Tell Divergence (Acceptance Criteria 5)
+console.log('\n--- Verifying Acceptance Criteria 5: 1.9s Identical Pose & 2.4s Distinct Tell ---');
+const fEnemyH = new CF.Fighter({ x: 200, facing: 1 });
+const fEnemyV = new CF.Fighter({ x: 200, facing: 1 });
+const fFeintH = new CF.Fighter({ x: 200, facing: 1 });
+
+fEnemyH.play('enemyAttack', { dir: 'h', tellMs: 2000, windupMs: 3000 });
+fEnemyV.play('enemyAttack', { dir: 'v', tellMs: 2000, windupMs: 3000 });
+fFeintH.play('feint', { dir: 'h', tellMs: 2000, windupMs: 3000 });
+
+// Step to 1.9s (1900ms)
+fEnemyH.update(1900);
+fEnemyV.update(1900);
+fFeintH.update(1900);
+
+// Verify poses are 100% IDENTICAL across all joint angles at 1.9s
+for (const key of CF.POSE_FIELDS) {
+  if (key === 'airborne') continue;
+  const valH = fEnemyH.currentPose[key] || 0;
+  const valV = fEnemyV.currentPose[key] || 0;
+  const valFeint = fFeintH.currentPose[key] || 0;
+  assert(Math.abs(valH - valV) < 0.001, `1.9s: enemyAttack H and V are identical for joint '${key}' (${valH} == ${valV})`);
+  assert(Math.abs(valH - valFeint) < 0.001, `1.9s: enemyAttack and feint are identical for joint '${key}'`);
+}
+console.log('[PASS] enemyAttack H, V and feint are 100% identical at 1.9s');
+
+// Step to 2.4s (2400ms - 500ms after 1.9s)
+fEnemyH.update(500);
+fEnemyV.update(500);
+
+// Verify poses are CLEARLY and DRAMATICALLY different at 2.4s
+const swH = fEnemyH.currentPose.sw;
+const swV = fEnemyV.currentPose.sw;
+const auH = fEnemyH.currentPose.au;
+const auV = fEnemyV.currentPose.au;
+console.log(`2.4s Tell Poses: Horizontal sw=${swH.toFixed(1)}°, au=${auH.toFixed(1)}° | Vertical sw=${swV.toFixed(1)}°, au=${auV.toFixed(1)}°`);
+assert(Math.abs(swH - swV) > 100, `2.4s: Sword angle is dramatically different between H and V (${swH}° vs ${swV}°)`);
+assert(Math.abs(auH - auV) > 100, `2.4s: Upper arm angle is dramatically different between H and V (${auH}° vs ${auV}°)`);
+console.log('[PASS] enemyAttack H and V are clearly and unmistakably different at 2.4s');
+
+// 7. Test enemyAttack with Pending Direction Resolution (Addendum 3)
 const f2 = new CF.Fighter({ x: 200, facing: 1 });
 let tellFired = false;
 let telegraphedDir = null;
@@ -173,7 +213,7 @@ f2.on('strike', (data) => {
 f2.update(1200);
 assert(enemyStrikeFired, 'Strike fired after windup');
 
-// 7. Test Feint never fires strike
+// 8. Test Feint never fires strike
 const f3 = new CF.Fighter({ x: 200, facing: 1 });
 let feintStrikeFired = false;
 let feintTellFired = false;
@@ -188,7 +228,7 @@ assert(feintTellFired === true, 'Feint emits tell event');
 f3.update(2500);
 assert(feintStrikeFired === false, 'Feint NEVER emits a strike event');
 
-// 8. Test Special Attack (Special Slam)
+// 9. Test Special Attack (Special Slam)
 const f4 = new CF.Fighter({ x: 200, facing: 1 });
 let slamStrikeFired = false;
 f4.on('strike', (data) => {
@@ -202,12 +242,12 @@ assert(specialReceipt.strikeMs === 1200, 'Special attack strikeMs is 1200ms');
 f4.update(1250);
 assert(slamStrikeFired === true, 'Special slam strike fired at impact');
 
-// 9. Test Addendum 4: f.react('hit') alias
+// 10. Test Addendum 4: f.react('hit') alias
 const f5 = new CF.Fighter({ x: 440, facing: -1 });
 f5.react('hit');
 assert(f5.currentMove().name === 'hurt', "f.react('hit') correctly aliases to 'hurt' move");
 
-// 10. Test Shields and Shield Break
+// 11. Test Shields and Shield Break
 const f6 = new CF.Fighter({ x: 440, facing: -1 });
 f6.setShield(true);
 assert(f6.hasShield === true, 'Shield active after setShield(true)');
@@ -220,4 +260,25 @@ assert(f6.hasShield === false, 'Shield inactive after shieldBreak()');
 assert(shieldBreakFired === true, 'shieldBreak event emitted');
 assert(f6.currentMove().name === 'stumble', 'Fighter plays stumble on shieldBreak');
 
-console.log('\n=== ALL AUTOMATED VERIFICATIONS PASSED SUCCESSFULLY (10/10) ===\n');
+// 12. Benchmark Performance (Must be well under 2ms per frame)
+console.log('\n--- Benchmarking Performance: 1,000 Simulation Frames ---');
+const benchFighter = new CF.Fighter({ x: 200, facing: 1 });
+benchFighter.play('slash');
+const startTime = Date.now();
+const frames = 1000;
+for (let i = 0; i < frames; i++) {
+  benchFighter.update(16.6);
+  CF.computeJoints(benchFighter.x, benchFighter.currentPose, benchFighter.facing, benchFighter.groundY);
+}
+const elapsed = Date.now() - startTime;
+const msPerFrame = elapsed / frames;
+console.log(`Executed ${frames} update+joint frames in ${elapsed}ms -> ${msPerFrame.toFixed(3)}ms per frame`);
+assert(msPerFrame < 2.0, `Per-frame cost (${msPerFrame.toFixed(3)}ms) is well under 2.0ms`);
+
+// 13. Test Coordinate Rounding Helper r05
+assert(CF.r05(10.2) === 10.0, 'r05(10.2) is 10.0');
+assert(CF.r05(10.3) === 10.5, 'r05(10.3) is 10.5');
+assert(CF.r05(10.7) === 10.5, 'r05(10.7) is 10.5');
+assert(CF.r05(10.8) === 11.0, 'r05(10.8) is 11.0');
+
+console.log('\n=== ALL AUTOMATED VERIFICATIONS & BENCHMARKS PASSED SUCCESSFULLY (13/13) ===\n');

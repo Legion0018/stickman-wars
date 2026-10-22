@@ -1,5 +1,10 @@
 // anim/lab.js - Code Fighters Animation Lab Controller & UI Harness
 // Classic script format: attaches directly to window.CF
+// Follows anim/STYLE.md:
+// - Rule 2: Sharp rendering with devicePixelRatio backing store scaling.
+// - Rule 3: Readable silhouette mode toggle.
+// - Rule 8: Minimal effects only (Extra FX toggle OFF by default).
+// - Contact Sheet generator: 8 frames per move at 2x scale.
 window.CF = window.CF || {};
 
 (function () {
@@ -12,6 +17,10 @@ window.CF = window.CF || {};
   let lastTimestamp = 0;
   let targetReactMode = 'auto'; // 'none', 'hit', 'block', 'parry', 'dodge', 'auto'
   let debugSkeleton = false;
+  let silhouetteMode = false;
+
+  const LOGICAL_W = 640;
+  const LOGICAL_H = 220;
 
   const logEntries = [];
   const MAX_LOG_LINES = 50;
@@ -68,7 +77,6 @@ window.CF = window.CF || {};
       fighterB.react('dodged');
       log(`B: react('dodged')`, 'reaction');
     } else if (targetReactMode === 'auto') {
-      // Auto react based on defender's current move
       const bMove = fighterB.currentMove();
       if (bMove.name === 'block') {
         fighterB.react('blocked');
@@ -86,18 +94,27 @@ window.CF = window.CF || {};
   function handleAttackerTell(data) {
     log(`A: 'tell' event telegraphed direction: [${data.dir.toUpperCase()}]`, 'tell');
 
-    // Auto reaction to tell if in auto mode
     if (targetReactMode === 'auto') {
       if (data.dir === 'h') {
-        // Horizontal attack: counter by ducking
         log(`B: Auto-reacting to 'H' tell -> duck()`, 'tell');
         fighterB.play('duck');
       } else if (data.dir === 'v') {
-        // Vertical attack: counter by stepping
         log(`B: Auto-reacting to 'V' tell -> stepLeft()`, 'tell');
         fighterB.play('stepLeft');
       }
     }
+  }
+
+  // --- Sharp Rendering Resizer (Rule 2) ---
+  function resizeCanvas() {
+    if (!canvas || !ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(LOGICAL_W * dpr);
+    canvas.height = Math.floor(LOGICAL_H * dpr);
+    canvas.style.width = LOGICAL_W + 'px';
+    canvas.style.height = LOGICAL_H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
   }
 
   // --- Initialization ---
@@ -105,6 +122,9 @@ window.CF = window.CF || {};
     canvas = document.getElementById('labCanvas');
     if (!canvas) return;
     ctx = canvas.getContext('2d');
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
 
     // Initialize Fighters
     fighterA = new CF.Fighter({
@@ -135,13 +155,13 @@ window.CF = window.CF || {};
     fighterA.on('shieldBreak', () => log(`A: shieldBreak event!`, 'strike'));
 
     // Wire Fighter B events
-    fighterB.on('strike', (d) => log(`B: strike event landed`, 'strike'));
+    fighterB.on('strike', () => log(`B: strike event landed`, 'strike'));
     fighterB.on('end', (d) => log(`B: move finished: ${d.move}`));
     fighterB.on('shieldBreak', () => log(`B: shieldBreak event!`, 'strike'));
 
     bindUI();
     populateMoveTable();
-    log('Code Fighters Animation Lab initialized. Ready.', 'tell');
+    log('Code Fighters Animation Lab initialized. Visual Quality Pass Active.', 'tell');
 
     // Start Animation Loop
     lastTimestamp = performance.now();
@@ -153,7 +173,6 @@ window.CF = window.CF || {};
     const rawDt = timestamp - (lastTimestamp || timestamp);
     lastTimestamp = timestamp;
 
-    // Clamp dt to avoid huge jumps if tab was backgrounded
     const dt = Math.min(rawDt, 60);
 
     if (!isPaused) {
@@ -167,77 +186,96 @@ window.CF = window.CF || {};
   }
 
   function updateSimulation(dtMs) {
-    // 1. Effects
     CF.Effects.update(dtMs);
-
-    // 2. Fighters
-    fighterA.update(dtMs);
-    fighterB.update(dtMs);
+    if (!CF.Effects.isHitStopActive()) {
+      fighterA.update(dtMs);
+      fighterB.update(dtMs);
+    }
   }
 
   function renderCanvas() {
-    const w = canvas.width;
-    const h = canvas.height;
+    const w = LOGICAL_W;
+    const h = LOGICAL_H;
 
     ctx.clearRect(0, 0, w, h);
 
     // Apply Camera Shake
     CF.Effects.applyCamera(ctx);
 
-    // 1. Background Grid & Arena Floor
+    // 1. Arena Background (Light parchment in silhouette mode, dark in normal mode)
     drawArenaBackground(ctx, w, h);
 
-    // 2. Background Effects (Shockwaves, ground marks)
+    // 2. Background Effects (Shockwaves on floor)
     CF.Effects.drawBackground(ctx);
 
-    // 3. Motion Trails
+    // 3. Motion Trails (short, only on strikes)
     CF.Effects.drawTrails(ctx, '#EF9F27');
 
-    // 4. Fighters
+    // 4. Fighters (Render with silhouette flag if active)
     fighterA.drawOptions.debug = debugSkeleton;
     fighterB.drawOptions.debug = debugSkeleton;
-    fighterA.draw(ctx);
-    fighterB.draw(ctx);
+    fighterA.draw(ctx, { silhouette: silhouetteMode });
+    fighterB.draw(ctx, { silhouette: silhouetteMode });
 
-    // 5. Foreground Particles (Sparks, Dust, Shards)
+    // 5. Foreground Minimal Particles (Star sparks, dust puffs, shield shards)
     CF.Effects.drawParticles(ctx);
 
-    // 6. Floating Combat Texts
+    // 6. Floating Reaction Words
     CF.Effects.drawFloatingTexts(ctx);
 
     // Restore Camera Shake
     CF.Effects.restoreCamera(ctx);
 
-    // 7. Post-Processing Overlays (Special Slam Banner, Screen Flash)
+    // 7. Post-Processing (Special Slam Banner, Screen Flash if extraFx)
     CF.Effects.drawOverlay(ctx, w, h);
   }
 
   function drawArenaBackground(ctx, w, h) {
-    // Floor baseline at groundY = 190
     const gy = 190;
 
-    // Arena Floor subtle gradient
-    const floorGrad = ctx.createLinearGradient(0, gy, 0, h);
-    floorGrad.addColorStop(0, '#1E293B');
-    floorGrad.addColorStop(1, '#0F172A');
-    ctx.fillStyle = floorGrad;
-    ctx.fillRect(0, gy, w, h - gy);
+    if (silhouetteMode) {
+      // Rule 3: High-contrast light background for checking solid black silhouettes
+      ctx.fillStyle = '#F8FAFC';
+      ctx.fillRect(0, 0, w, h);
 
-    // Ground line
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(0, gy);
-    ctx.lineTo(w, gy);
-    ctx.stroke();
+      ctx.fillStyle = '#E2E8F0';
+      ctx.fillRect(0, gy, w, h - gy);
 
-    // Center arena mark
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(w / 2, gy - 6);
-    ctx.lineTo(w / 2, gy + 6);
-    ctx.stroke();
+      ctx.strokeStyle = '#94A3B8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(w, gy);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#CBD5E1';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, gy - 6);
+      ctx.lineTo(w / 2, gy + 6);
+      ctx.stroke();
+    } else {
+      // Standard dark arena
+      const floorGrad = ctx.createLinearGradient(0, gy, 0, h);
+      floorGrad.addColorStop(0, '#1E293B');
+      floorGrad.addColorStop(1, '#0F172A');
+      ctx.fillStyle = floorGrad;
+      ctx.fillRect(0, gy, w, h - gy);
+
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(w, gy);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, gy - 6);
+      ctx.lineTo(w / 2, gy + 6);
+      ctx.stroke();
+    }
   }
 
   function updateLiveReadout() {
@@ -269,7 +307,6 @@ window.CF = window.CF || {};
 
   // --- UI Bindings ---
   function bindUI() {
-    // Playback Speed Slider
     const speedSlider = document.getElementById('speedSlider');
     const speedVal = document.getElementById('speedVal');
     if (speedSlider) {
@@ -279,7 +316,6 @@ window.CF = window.CF || {};
       });
     }
 
-    // Pause / Resume
     const pauseBtn = document.getElementById('pauseBtn');
     if (pauseBtn) {
       pauseBtn.addEventListener('click', () => {
@@ -290,7 +326,6 @@ window.CF = window.CF || {};
       });
     }
 
-    // Step Frame
     const stepBtn = document.getElementById('stepBtn');
     if (stepBtn) {
       stepBtn.addEventListener('click', () => {
@@ -306,7 +341,6 @@ window.CF = window.CF || {};
       });
     }
 
-    // Reset All
     const resetBtn = document.getElementById('resetBtn');
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
@@ -314,6 +348,26 @@ window.CF = window.CF || {};
         fighterB.reset();
         CF.Effects.clear();
         log('Reset both fighters and arena effects.');
+      });
+    }
+
+    // Silhouette Mode Toggle (Rule 3)
+    const silhouetteToggle = document.getElementById('silhouetteToggle');
+    if (silhouetteToggle) {
+      silhouetteToggle.addEventListener('change', (e) => {
+        silhouetteMode = e.target.checked;
+        log(`Silhouette mode: ${silhouetteMode ? 'ENABLED (Solid black)' : 'DISABLED'}`);
+      });
+    }
+
+    // Extra FX Toggle (Rule 8: OFF by default)
+    const extraFxToggle = document.getElementById('extraFxToggle');
+    if (extraFxToggle) {
+      extraFxToggle.checked = false;
+      CF.Effects.extraFx = false;
+      extraFxToggle.addEventListener('change', (e) => {
+        CF.Effects.extraFx = e.target.checked;
+        log(`Extra FX: ${CF.Effects.extraFx ? 'ON' : 'OFF (Minimal)'}`);
       });
     }
 
@@ -330,7 +384,7 @@ window.CF = window.CF || {};
     if (reactSelect) {
       reactSelect.addEventListener('change', (e) => {
         targetReactMode = e.target.value;
-        log(`Defender reaction mode set to: ${targetReactMode}`);
+        log(`Defender reaction mode: ${targetReactMode}`);
       });
     }
 
@@ -349,6 +403,14 @@ window.CF = window.CF || {};
     if (playAllBtn) {
       playAllBtn.addEventListener('click', () => {
         runPlayAllSequence();
+      });
+    }
+
+    // Contact Sheet Generator Button
+    const contactSheetBtn = document.getElementById('generateContactSheetBtn');
+    if (contactSheetBtn) {
+      contactSheetBtn.addEventListener('click', () => {
+        generateContactSheet();
       });
     }
 
@@ -374,7 +436,7 @@ window.CF = window.CF || {};
       });
     });
 
-    // Special Addendum 3 Button: Test Pending Direction Resolution after delay
+    // Addendum 3: Test Pending Resolve
     const testPendingBtn = document.getElementById('testPendingBtn');
     if (testPendingBtn) {
       testPendingBtn.addEventListener('click', () => {
@@ -390,7 +452,7 @@ window.CF = window.CF || {};
       });
     }
 
-    // Early resolve test button (resolves BEFORE tellMs arrives)
+    // Early resolve test button
     const testEarlyResolveBtn = document.getElementById('testEarlyResolveBtn');
     if (testEarlyResolveBtn) {
       testEarlyResolveBtn.addEventListener('click', () => {
@@ -405,7 +467,7 @@ window.CF = window.CF || {};
       });
     }
 
-    // Special Addendum 4 Button: Test f.react('hit')
+    // Addendum 4: Test f.react('hit')
     const testHitAliasBtn = document.getElementById('testHitAliasBtn');
     if (testHitAliasBtn) {
       testHitAliasBtn.addEventListener('click', () => {
@@ -449,6 +511,115 @@ window.CF = window.CF || {};
     next();
   }
 
+  // --- Contact Sheet Generator (8 Frames per Move at 2x Scale) ---
+  function generateContactSheet() {
+    const container = document.getElementById('contactSheetContainer');
+    if (!container) return;
+    container.innerHTML = '<div style="color: #38BDF8; padding: 12px;">Generating 2x Contact Sheet for all 22 moves (8 frames/move)...</div>';
+
+    const movesToInspect = [
+      'idle', 'slash', 'stepLeft', 'stepRight', 'jump', 'duck', 'block',
+      'hurt', 'enemyAttack', 'feint', 'special',
+      'weakSlash', 'strongSlash', 'comboHeavy', 'stumble', 'knockdown', 'victory',
+      'riposte', 'spinSlash', 'backflipEvade', 'dashThrust', 'focus'
+    ];
+
+    setTimeout(() => {
+      let html = '';
+
+      for (let m = 0; m < movesToInspect.length; m++) {
+        const moveName = movesToInspect[m];
+        const moveInfo = CF.getMoveInfo(moveName);
+        const resolvedMove = CF.resolveMove(moveName, { dir: 'h', tellMs: 2000, windupMs: 3000 });
+        const totalMs = resolvedMove.totalMs;
+
+        html += `
+          <div class="contact-move-row">
+            <div class="contact-move-header">
+              <strong>${moveName}</strong> — total: ${totalMs}ms, strike: ${resolvedMove.strikeMs || 'none'}, tags: [${resolvedMove.tags.join(', ')}]
+            </div>
+            <div class="contact-frames-strip" id="strip_${moveName}"></div>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+
+      // Render 8 canvases per move at 2x scale
+      for (let m = 0; m < movesToInspect.length; m++) {
+        const moveName = movesToInspect[m];
+        const strip = document.getElementById('strip_' + moveName);
+        if (!strip) continue;
+
+        const dummyFighter = new CF.Fighter({ x: 70, groundY: 130, accent: '#EF4444' });
+        const resolvedMove = CF.resolveMove(moveName, { dir: 'h', tellMs: 2000, windupMs: 3000 });
+        dummyFighter.play(moveName, { dir: 'h', tellMs: 2000, windupMs: 3000 });
+
+        const numFrames = 8;
+        for (let i = 0; i < numFrames; i++) {
+          const sampleTime = Math.floor((i / (numFrames - 1)) * resolvedMove.totalMs);
+
+          // Advance dummy fighter directly to sampleTime
+          dummyFighter.reset();
+          dummyFighter.play(moveName, { dir: 'h', tellMs: 2000, windupMs: 3000 });
+          dummyFighter.update(sampleTime);
+
+          const frameBox = document.createElement('div');
+          frameBox.className = 'contact-frame-cell';
+
+          const frameCanvas = document.createElement('canvas');
+          const dpr = 2; // 2x scale
+          const w = 140;
+          const h = 150;
+          frameCanvas.width = w * dpr;
+          frameCanvas.height = h * dpr;
+          frameCanvas.style.width = w + 'px';
+          frameCanvas.style.height = h + 'px';
+
+          const fCtx = frameCanvas.getContext('2d');
+          fCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          fCtx.imageSmoothingEnabled = false;
+
+          // Background
+          if (silhouetteMode) {
+            fCtx.fillStyle = '#FFFFFF';
+            fCtx.fillRect(0, 0, w, h);
+            fCtx.strokeStyle = '#E2E8F0';
+            fCtx.lineWidth = 1;
+            fCtx.beginPath();
+            fCtx.moveTo(0, 130);
+            fCtx.lineTo(w, 130);
+            fCtx.stroke();
+          } else {
+            fCtx.fillStyle = '#0B1120';
+            fCtx.fillRect(0, 0, w, h);
+            fCtx.strokeStyle = '#334155';
+            fCtx.lineWidth = 1;
+            fCtx.beginPath();
+            fCtx.moveTo(0, 130);
+            fCtx.lineTo(w, 130);
+            fCtx.stroke();
+          }
+
+          // Draw fighter at 2x frame
+          dummyFighter.draw(fCtx, { silhouette: silhouetteMode });
+
+          const isStrikeMoment = (resolvedMove.strikeMs && Math.abs(sampleTime - resolvedMove.strikeMs) < 40);
+
+          frameBox.appendChild(frameCanvas);
+          frameBox.innerHTML += `
+            <div class="contact-frame-label ${isStrikeMoment ? 'strike-tag' : ''}">
+              F${i + 1}: ${sampleTime}ms ${isStrikeMoment ? '★ STRIKE' : ''}
+            </div>
+          `;
+          strip.appendChild(frameBox);
+        }
+      }
+
+      log('Contact Sheet generated at 2x scale (8 frames per move).', 'tell');
+    }, 50);
+  }
+
   // --- Populate Move Table ---
   function populateMoveTable() {
     const tbody = document.getElementById('moveTableBody');
@@ -461,7 +632,7 @@ window.CF = window.CF || {};
       'riposte', 'spinSlash', 'backflipEvade', 'dashThrust', 'focus'
     ];
 
-    tbody.innerHTML = allMoves.map((name, i) => {
+    tbody.innerHTML = allMoves.map((name) => {
       const info = CF.getMoveInfo(name);
       const isG1 = ['idle', 'stepLeft', 'stepRight', 'jump', 'duck', 'block', 'slash', 'hurt', 'enemyAttack', 'feint', 'special'].indexOf(name) !== -1;
       const strikeStr = info.strikeTimes ? info.strikeTimes.join(', ') + ' ms' : (info.strikeMs ? info.strikeMs + ' ms' : '-');
@@ -479,14 +650,14 @@ window.CF = window.CF || {};
     }).join('');
   }
 
-  // Expose to CF namespace
   CF.Lab = {
     init: init,
+    resizeCanvas: resizeCanvas,
     getFighterA: () => fighterA,
-    getFighterB: () => fighterB
+    getFighterB: () => fighterB,
+    generateContactSheet: generateContactSheet
   };
 
-  // Auto-init on DOMContentLoaded
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);

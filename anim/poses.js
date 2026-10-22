@@ -1,175 +1,195 @@
 // anim/poses.js - Code Fighters Named Keyframe Poses
 // All angles are ABSOLUTE degrees in world space:
 //   0 = straight down, 90 = toward facing, 180 = straight up, -90 = backward.
-// Torso lean: positive = leaning forward, negative = leaning back.
+// Torso lean: positive = forward tilt, negative = backward tilt.
+// Designed according to anim/STYLE.md:
+// - Readable silhouettes (wide stances, arms/sword clear of torso).
+// - Unmistakable telegraphed tell poses (horizontal vs vertical).
+// - Non-sliding foot placement for grounded moves.
 window.CF = window.CF || {};
 
 (function () {
+  'use strict';
+
   const Poses = {
     // -------------------------------------------------------------------------
     // 1. BASIC STANCE
     // -------------------------------------------------------------------------
     idle: {
       lean: 5, drop: 0,
-      au: 40, al: 110, sw: 150,
-      bau: -20, bal: 30,
-      flu: 14, fll: 4,
-      blu: -14, bll: -4,
+      au: 45, al: 115, sw: 155,
+      bau: -25, bal: 25,
+      flu: 18, fll: 6,
+      blu: -22, bll: -6,
       dx: 0, dy: 0, rot: 0, airborne: false
     },
 
     // -------------------------------------------------------------------------
     // 2. DEFENCE & DODGES
     // -------------------------------------------------------------------------
-    // Sidestep left (backward from opponent)
+    // Sidestep left (backward away from opponent) - clearly displaced (dx: -65)
     stepLeftOut: {
-      lean: -6, drop: 3,
-      au: 35, al: 105, sw: 145,
+      lean: -8, drop: 4,
+      au: 40, al: 110, sw: 150,
       bau: -25, bal: 25,
-      flu: 22, fll: 8,
-      blu: -28, bll: -8,
-      dx: -46, dy: 0, rot: 0, airborne: false
+      flu: 25, fll: 8,
+      blu: -35, bll: -10,
+      dx: -65, dy: 0, rot: 0, airborne: false
     },
 
-    // Sidestep right (forward toward opponent)
+    // Sidestep right (forward toward opponent) - clearly displaced (dx: +65)
     stepRightOut: {
-      lean: 10, drop: 3,
-      au: 45, al: 115, sw: 155,
+      lean: 12, drop: 4,
+      au: 48, al: 118, sw: 158,
       bau: -15, bal: 35,
-      flu: 32, fll: 10,
-      blu: -12, bll: -2,
-      dx: 46, dy: 0, rot: 0, airborne: false
+      flu: 42, fll: 12,
+      blu: -20, bll: -5,
+      dx: 65, dy: 0, rot: 0, airborne: false
     },
 
-    // Jump (hop over low horizontal attacks)
+    // Jump (anticipation crouch, apex, fall, landing compression)
     jumpCrouch: {
-      lean: 12, drop: 14,
-      au: 25, al: 90, sw: 130,
+      lean: 14, drop: 16,
+      au: 30, al: 90, sw: 130,
       bau: -25, bal: 20,
-      flu: 45, fll: 12,
-      blu: 35, bll: 10,
+      flu: 55, fll: 16,
+      blu: 25, bll: 6,
       dx: 0, dy: 0, rot: 0, airborne: false
     },
     jumpApex: {
       lean: 6, drop: 0,
-      au: 60, al: 135, sw: 170,
-      bau: -10, bal: 50,
-      flu: 80, fll: 35,
-      blu: 75, bll: 30,
-      dx: 0, dy: -60, rot: 0, airborne: true
+      au: 65, al: 140, sw: 175,
+      bau: -10, bal: 55,
+      flu: 85, fll: 38,
+      blu: 80, bll: 32,
+      dx: 0, dy: -65, rot: 0, airborne: true
     },
     jumpFall: {
       lean: 8, drop: 0,
-      au: 50, al: 120, sw: 160,
+      au: 55, al: 125, sw: 165,
       bau: -15, bal: 40,
-      flu: 40, fll: 10,
-      blu: 30, bll: 5,
-      dx: 0, dy: -10, rot: 0, airborne: true
+      flu: 45, fll: 12,
+      blu: 35, bll: 8,
+      dx: 0, dy: -15, rot: 0, airborne: true
     },
     jumpLand: {
-      lean: 16, drop: 16,
-      au: 30, al: 90, sw: 130,
+      lean: 18, drop: 18,
+      au: 30, al: 85, sw: 125,
       bau: -25, bal: 15,
-      flu: 55, fll: 14,
-      blu: 45, bll: 12,
+      flu: 65, fll: 18,
+      blu: 30, bll: 8,
       dx: 0, dy: 0, rot: 0, airborne: false
     },
 
-    // Duck (crouch under high horizontal attacks)
+    // Duck (deep crouch beneath horizontal strikes - drop: 24, head deeply lowered)
     duck: {
-      lean: 25, drop: 16,
-      au: 35, al: 95, sw: 140,
+      lean: 32, drop: 24,
+      au: 40, al: 95, sw: 140,
       bau: -20, bal: 25,
-      flu: 65, fll: 6,
-      blu: -55, bll: -8,
-      dx: 6, dy: 0, rot: 0, airborne: false
+      flu: 75, fll: 8,
+      blu: -65, bll: -10,
+      dx: 8, dy: 0, rot: 0, airborne: false
     },
 
-    // Block (sword held vertical in front)
+    // Block (sword held vertical across chest, feet planted wide)
     block: {
-      lean: -4, drop: 2,
-      au: 55, al: 150, sw: 178,
-      bau: 40, bal: 140,
-      flu: 16, fll: 5,
-      blu: -16, bll: -5,
-      dx: -2, dy: 0, rot: 0, airborne: false
+      lean: -4, drop: 4,
+      au: 55, al: 155, sw: 180,
+      bau: 35, bal: 140,
+      flu: 20, fll: 6,
+      blu: -25, bll: -8,
+      dx: 0, dy: 0, rot: 0, airborne: false
     },
     blockRecoil: {
-      lean: -14, drop: 4,
-      au: 50, al: 145, sw: 175,
-      bau: 35, bal: 135,
-      flu: 10, fll: 4,
-      blu: -24, bll: -8,
-      dx: -10, dy: 0, rot: 0, airborne: false
+      lean: -14, drop: 6,
+      au: 50, al: 150, sw: 175,
+      bau: 30, bal: 135,
+      flu: 14, fll: 4,
+      blu: -30, bll: -10,
+      dx: -12, dy: 0, rot: 0, airborne: false
     },
 
     // -------------------------------------------------------------------------
     // 3. BASIC ATTACK & REACTIONS
     // -------------------------------------------------------------------------
-    // Slash (basic pass)
+    // Slash:
+    // windup = lean back ~12 deg, weight on back leg, sword up and behind head
     slashWindup: {
-      lean: -10, drop: 0,
-      au: 150, al: 170, sw: 200,
-      bau: -40, bal: -10,
-      flu: 10, fll: 0,
-      blu: -18, bll: -6,
-      dx: -4, dy: 0, rot: 0, airborne: false
+      lean: -12, drop: 2,
+      au: 145, al: 165, sw: 195,
+      bau: -35, bal: 10,
+      flu: 18, fll: 5,
+      blu: -26, bll: -8,
+      dx: -6, dy: 0, rot: 0, airborne: false
     },
+    // strike = lean forward ~25 deg, front leg lunges, sword sweeps to forward-horizontal
     slashStrike: {
-      lean: 25, drop: 6,
-      au: 95, al: 90, sw: 85,
-      bau: -30, bal: -20,
-      flu: 50, fll: 10,
-      blu: -30, bll: -5,
-      dx: 18, dy: 0, rot: 0, airborne: false
+      lean: 25, drop: 8,
+      au: 92, al: 88, sw: 88,
+      bau: -40, bal: -20,
+      flu: 55, fll: 12,
+      blu: -35, bll: -8,
+      dx: 22, dy: 0, rot: 0, airborne: false
     },
+    // overshoot = subtle 5-8% overshoot at contact impact
+    slashOvershoot: {
+      lean: 27, drop: 8,
+      au: 88, al: 82, sw: 82,
+      bau: -45, bal: -22,
+      flu: 58, fll: 13,
+      blu: -37, bll: -9,
+      dx: 24, dy: 0, rot: 0, airborne: false
+    },
+    // recover = deliberate return to guard
     slashRecover: {
-      lean: 12, drop: 2,
-      au: 65, al: 95, sw: 110,
-      bau: -25, bal: 0,
-      flu: 30, fll: 6,
-      blu: -22, bll: -4,
+      lean: 10, drop: 2,
+      au: 60, al: 100, sw: 125,
+      bau: -25, bal: 10,
+      flu: 30, fll: 8,
+      blu: -25, bll: -6,
       dx: 8, dy: 0, rot: 0, airborne: false
     },
 
-    // Hurt (stagger from impact)
+    // Hurt: head and chest snap back, quick recoil (dx: -20)
     hurt: {
-      lean: -25, drop: 2,
-      au: 10, al: 20, sw: 15,
-      bau: -40, bal: -30,
-      flu: 5, fll: 0,
-      blu: -25, bll: -10,
-      dx: -18, dy: 0, rot: 0, airborne: false
+      lean: -28, drop: 4,
+      au: -10, al: 10, sw: 10,
+      bau: -45, bal: -25,
+      flu: 10, fll: 2,
+      blu: -30, bll: -10,
+      dx: -20, dy: 0, rot: 0, airborne: false
     },
     hurtRecover: {
-      lean: -10, drop: 1,
-      au: 25, al: 60, sw: 80,
-      bau: -30, bal: 0,
-      flu: 10, fll: 2,
-      blu: -18, bll: -6,
-      dx: -8, dy: 0, rot: 0, airborne: false
+      lean: -8, drop: 2,
+      au: 25, al: 75, sw: 105,
+      bau: -30, bal: 5,
+      flu: 14, fll: 4,
+      blu: -22, bll: -6,
+      dx: -10, dy: 0, rot: 0, airborne: false
     },
 
     // -------------------------------------------------------------------------
-    // 4. ENEMY ATTACK & FEINT (Hidden Direction Gameplay)
+    // 4. ENEMY ATTACK & FEINT (Telegraphed Combat)
     // -------------------------------------------------------------------------
-    // Neutral coiled crouch: MUST be identical for 'h', 'v', and 'pending'
+    // Neutral coiled crouch: MUST be identical for 'h', 'v', and 'pending' at 1.9s!
+    // Compact crouch where neither direction is visible.
     enemyCoil: {
-      lean: 14, drop: 12,
-      au: 45, al: 100, sw: 125,
-      bau: -20, bal: 25,
-      flu: 35, fll: 10,
-      blu: -25, bll: -8,
+      lean: 12, drop: 16,
+      au: 30, al: 85, sw: 75,
+      bau: -15, bal: 25,
+      flu: 45, fll: 14,
+      blu: -35, bll: -10,
       dx: 0, dy: 0, rot: 0, airborne: false
     },
 
-    // Horizontal tell: sword drawn back and out to the side at waist height
+    // Horizontal tell: body turns side-on, sword drawn back at waist height,
+    // long horizontal line. Unmistakable at a glance!
     tellH: {
-      lean: -8, drop: 8,
-      au: -30, al: 10, sw: -40,
-      bau: 50, bal: 90,
+      lean: -8, drop: 6,
+      au: -85, al: -90, sw: -90,
+      bau: 40, bal: 90,
       flu: 25, fll: 8,
-      blu: -28, bll: -8,
+      blu: -32, bll: -8,
       dx: -8, dy: 0, rot: 0, airborne: false
     },
     strikeH: {
@@ -181,13 +201,14 @@ window.CF = window.CF || {};
       dx: 24, dy: 0, rot: 0, airborne: false
     },
 
-    // Vertical tell: sword raised overhead with both arms up
+    // Vertical tell: both arms up, sword straight overhead, tall vertical line.
+    // Unmistakable at a glance!
     tellV: {
-      lean: -14, drop: 6,
-      au: 165, al: 175, sw: 180,
-      bau: 160, bal: 170,
-      flu: 18, fll: 6,
-      blu: -24, bll: -8,
+      lean: -12, drop: 4,
+      au: 175, al: 180, sw: 180,
+      bau: 170, bal: 175,
+      flu: 16, fll: 5,
+      blu: -22, bll: -6,
       dx: -4, dy: 0, rot: 0, airborne: false
     },
     strikeV: {
@@ -204,8 +225,8 @@ window.CF = window.CF || {};
       lean: -2, drop: 0,
       au: 10, al: 40, sw: 20,
       bau: -10, bal: 30,
-      flu: 10, fll: 2,
-      blu: -12, bll: -4,
+      flu: 14, fll: 4,
+      blu: -18, bll: -5,
       dx: 0, dy: 0, rot: 0, airborne: false
     },
 
@@ -213,119 +234,119 @@ window.CF = window.CF || {};
     // 5. SPECIAL MOVE
     // -------------------------------------------------------------------------
     specialCharge: {
-      lean: 18, drop: 14,
+      lean: 20, drop: 16,
       au: 155, al: 175, sw: 195,
       bau: 145, bal: 165,
-      flu: 45, fll: 12,
-      blu: -30, bll: -8,
-      dx: -6, dy: 0, rot: 0, airborne: false
+      flu: 50, fll: 14,
+      blu: -35, bll: -10,
+      dx: -8, dy: 0, rot: 0, airborne: false
     },
     specialLeap: {
       lean: -15, drop: 0,
       au: 170, al: 180, sw: 190,
       bau: 155, bal: 165,
-      flu: 70, fll: 25,
-      blu: 65, bll: 20,
-      dx: 80, dy: -70, rot: 0, airborne: true
+      flu: 75, fll: 28,
+      blu: 70, bll: 22,
+      dx: 70, dy: -70, rot: 0, airborne: true
     },
     specialSlam: {
-      lean: 40, drop: 18,
+      lean: 38, drop: 18,
       au: 45, al: 45, sw: 20,
       bau: 35, bal: 35,
-      flu: 60, fll: 18,
-      blu: -40, bll: -12,
+      flu: 65, fll: 20,
+      blu: -45, bll: -14,
       dx: 95, dy: 0, rot: 0, airborne: false
     },
     specialRecover: {
-      lean: 15, drop: 4,
+      lean: 14, drop: 4,
       au: 50, al: 90, sw: 110,
       bau: -20, bal: 20,
-      flu: 25, fll: 8,
-      blu: -20, bll: -6,
-      dx: 60, dy: 0, rot: 0, airborne: false
+      flu: 28, fll: 8,
+      blu: -24, bll: -6,
+      dx: 50, dy: 0, rot: 0, airborne: false
     },
 
     // -------------------------------------------------------------------------
     // 6. GROUP 2 POSES: VARIANTS & RESULTS
     // -------------------------------------------------------------------------
     weakSlashWindup: {
-      lean: -4, drop: 0,
-      au: 120, al: 140, sw: 170,
+      lean: -6, drop: 2,
+      au: 125, al: 145, sw: 175,
       bau: -30, bal: 0,
-      flu: 10, fll: 2,
-      blu: -14, bll: -4,
-      dx: -2, dy: 0, rot: 0, airborne: false
+      flu: 14, fll: 4,
+      blu: -20, bll: -5,
+      dx: -3, dy: 0, rot: 0, airborne: false
     },
     weakSlashStrike: {
-      lean: 15, drop: 4,
-      au: 80, al: 85, sw: 80,
-      bau: -20, bal: -10,
-      flu: 35, fll: 8,
-      blu: -22, bll: -5,
-      dx: 12, dy: 0, rot: 0, airborne: false
-    },
-    strongSlashWindup: {
-      lean: -18, drop: 2,
-      au: 165, al: 180, sw: 215,
-      bau: -55, bal: -20,
-      flu: 5, fll: 0,
-      blu: -26, bll: -8,
-      dx: -8, dy: 0, rot: 0, airborne: false
-    },
-    strongSlashStrike: {
-      lean: 34, drop: 10,
-      au: 95, al: 90, sw: 70,
-      bau: -40, bal: -25,
-      flu: 60, fll: 15,
-      blu: -40, bll: -10,
-      dx: 30, dy: 0, rot: 0, airborne: false
-    },
-    comboSlash1: {
-      lean: 20, drop: 4,
-      au: 85, al: 80, sw: 75,
-      bau: -35, bal: -15,
-      flu: 40, fll: 8,
-      blu: -25, bll: -6,
+      lean: 18, drop: 6,
+      au: 85, al: 85, sw: 85,
+      bau: -25, bal: -10,
+      flu: 40, fll: 10,
+      blu: -26, bll: -6,
       dx: 14, dy: 0, rot: 0, airborne: false
     },
+    strongSlashWindup: {
+      lean: -18, drop: 4,
+      au: 170, al: 185, sw: 220,
+      bau: -55, bal: -20,
+      flu: 10, fll: 2,
+      blu: -30, bll: -10,
+      dx: -10, dy: 0, rot: 0, airborne: false
+    },
+    strongSlashStrike: {
+      lean: 36, drop: 12,
+      au: 95, al: 90, sw: 70,
+      bau: -45, bal: -25,
+      flu: 65, fll: 16,
+      blu: -45, bll: -12,
+      dx: 32, dy: 0, rot: 0, airborne: false
+    },
+    comboSlash1: {
+      lean: 22, drop: 6,
+      au: 88, al: 82, sw: 78,
+      bau: -35, bal: -15,
+      flu: 45, fll: 10,
+      blu: -28, bll: -7,
+      dx: 16, dy: 0, rot: 0, airborne: false
+    },
     comboSlash2: {
-      lean: -5, drop: 4,
-      au: -20, al: 30, sw: 10,
+      lean: -6, drop: 4,
+      au: -10, al: 55, sw: 45,
       bau: 40, bal: 60,
-      flu: 25, fll: 6,
-      blu: -20, bll: -5,
-      dx: 22, dy: 0, rot: 0, airborne: false
+      flu: 28, fll: 8,
+      blu: -24, bll: -6,
+      dx: 24, dy: 0, rot: 0, airborne: false
     },
     comboOverhead: {
-      lean: 35, drop: 12,
+      lean: 36, drop: 14,
       au: 35, al: 40, sw: 20,
       bau: 25, bal: 30,
-      flu: 55, fll: 15,
-      blu: -35, bll: -10,
-      dx: 28, dy: 0, rot: 0, airborne: false
+      flu: 60, fll: 16,
+      blu: -38, bll: -12,
+      dx: 30, dy: 0, rot: 0, airborne: false
     },
     stumbleWindup: {
-      lean: 15, drop: 4,
+      lean: 16, drop: 6,
       au: 140, al: 160, sw: 190,
       bau: -30, bal: 10,
-      flu: 30, fll: 6,
-      blu: -20, bll: -5,
-      dx: 5, dy: 0, rot: 0, airborne: false
+      flu: 32, fll: 8,
+      blu: -22, bll: -6,
+      dx: 6, dy: 0, rot: 0, airborne: false
     },
     stumbleOverbalance: {
-      lean: 42, drop: 14,
+      lean: 42, drop: 16,
       au: -40, al: -20, sw: -60,
       bau: 120, bal: 140,
-      flu: 70, fll: 20,
-      blu: -50, bll: -15,
-      dx: 20, dy: 0, rot: 0, airborne: false
+      flu: 75, fll: 22,
+      blu: -55, bll: -16,
+      dx: 22, dy: 0, rot: 0, airborne: false
     },
     stumbleRecover: {
       lean: 10, drop: 2,
-      au: 30, al: 80, sw: 120,
+      au: 35, al: 85, sw: 125,
       bau: -20, bal: 20,
-      flu: 20, fll: 4,
-      blu: -16, bll: -4,
+      flu: 22, fll: 6,
+      blu: -18, bll: -5,
       dx: 12, dy: 0, rot: 0, airborne: false
     },
     knockdownFall: {
@@ -356,8 +377,8 @@ window.CF = window.CF || {};
       lean: -2, drop: 0,
       au: 170, al: 175, sw: 180,
       bau: -30, bal: 20,
-      flu: 14, fll: 4,
-      blu: -14, bll: -4,
+      flu: 18, fll: 6,
+      blu: -18, bll: -6,
       dx: 0, dy: 0, rot: 0, airborne: false
     },
 
@@ -365,27 +386,27 @@ window.CF = window.CF || {};
     // 7. GROUP 3 POSES: ORIGINALS & CHALLENGE POSE
     // -------------------------------------------------------------------------
     riposteParry: {
-      lean: -8, drop: 2,
+      lean: -8, drop: 4,
       au: 60, al: 155, sw: 175,
       bau: 45, bal: 145,
-      flu: 12, fll: 4,
-      blu: -20, bll: -6,
+      flu: 16, fll: 5,
+      blu: -24, bll: -8,
       dx: -4, dy: 0, rot: 0, airborne: false
     },
     riposteSpin: {
       lean: 10, drop: 4,
       au: 110, al: 110, sw: 110,
       bau: -30, bal: 20,
-      flu: 30, fll: 8,
-      blu: -25, bll: -6,
+      flu: 32, fll: 8,
+      blu: -26, bll: -7,
       dx: 15, dy: 0, rot: 180, airborne: false
     },
     riposteCounter: {
-      lean: 25, drop: 6,
+      lean: 26, drop: 6,
       au: 90, al: 85, sw: 80,
       bau: -40, bal: -20,
-      flu: 50, fll: 10,
-      blu: -30, bll: -8,
+      flu: 52, fll: 12,
+      blu: -32, bll: -8,
       dx: 25, dy: 0, rot: 360, airborne: false
     },
     spinSlashSpin1: {
@@ -408,8 +429,8 @@ window.CF = window.CF || {};
       lean: 10, drop: 4,
       au: 90, al: 85, sw: 80,
       bau: -40, bal: -20,
-      flu: 40, fll: 10,
-      blu: -30, bll: -6,
+      flu: 42, fll: 10,
+      blu: -30, bll: -7,
       dx: 30, dy: 0, rot: 360, airborne: false
     },
     backflipTuck: {
@@ -421,33 +442,33 @@ window.CF = window.CF || {};
       dx: -30, dy: -70, rot: -180, airborne: true
     },
     backflipLand: {
-      lean: 12, drop: 14,
+      lean: 14, drop: 16,
       au: 35, al: 90, sw: 130,
       bau: -25, bal: 20,
-      flu: 50, fll: 12,
-      blu: -40, bll: -8,
+      flu: 55, fll: 14,
+      blu: -45, bll: -10,
       dx: -60, dy: 0, rot: -360, airborne: false
     },
     dashThrustDash: {
       lean: 25, drop: 10,
       au: 60, al: 80, sw: 90,
       bau: -40, bal: -20,
-      flu: 45, fll: 10,
-      blu: -35, bll: -8,
+      flu: 48, fll: 10,
+      blu: -36, bll: -8,
       dx: 60, dy: 0, rot: 0, airborne: false
     },
     dashThrustExtend: {
       lean: 35, drop: 12,
       au: 90, al: 90, sw: 90,
       bau: -60, bal: -30,
-      flu: 65, fll: 15,
-      blu: -45, bll: -10,
+      flu: 68, fll: 15,
+      blu: -48, bll: -10,
       dx: 120, dy: 0, rot: 0, airborne: false
     },
     focusKneelTyping1: {
       lean: 18, drop: 22,
-      au: 75, al: 95, sw: 100,  // sword rested pointing downward
-      bau: 70, bal: 85,         // typing hand out forward
+      au: 75, al: 95, sw: 100,
+      bau: 70, bal: 85,
       flu: 75, fll: 10,
       blu: -70, bll: -15,
       dx: 0, dy: 0, rot: 0, airborne: false
@@ -455,7 +476,7 @@ window.CF = window.CF || {};
     focusKneelTyping2: {
       lean: 18, drop: 22,
       au: 70, al: 90, sw: 100,
-      bau: 75, bal: 92,         // small alternate tap
+      bau: 75, bal: 92,
       flu: 75, fll: 10,
       blu: -70, bll: -15,
       dx: 0, dy: 0, rot: 0, airborne: false

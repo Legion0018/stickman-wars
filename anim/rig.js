@@ -3,8 +3,10 @@
 window.CF = window.CF || {};
 
 (function () {
+  'use strict';
+
   // RIG Configuration: lengths and dimensions in pixels
-  // Designed so that changing a length updates all calculations consistently.
+  // Geometrical invariants: limbs must NEVER stretch or distort.
   const RIG = {
     torso: 40,
     upperArm: 20,
@@ -31,6 +33,12 @@ window.CF = window.CF || {};
   ];
   CF.POSE_FIELDS = POSE_FIELDS;
 
+  // Coordinate rounding to nearest 0.5px for razor-sharp rendering without subpixel blur
+  function r05(val) {
+    return Math.round(val * 2) * 0.5;
+  }
+  CF.r05 = r05;
+
   // Helper: Vector from absolute angle in degrees and length.
   // 0 = straight down (+Y in canvas), 90 = facing (+X), 180 = straight up (-Y), -90 = backward (-X).
   function v(angleDeg, len) {
@@ -49,7 +57,7 @@ window.CF = window.CF || {};
   CF.vX = vX;
   CF.vY = vY;
 
-  // Easing functions for smooth pose blending
+  // Easing functions for per-keyframe blending
   const Easing = {
     linear: function (k) {
       return k;
@@ -62,6 +70,12 @@ window.CF = window.CF || {};
     },
     easeOut: function (k) {
       return 1 - (1 - k) * (1 - k);
+    },
+    easeOutCubic: function (k) {
+      return 1 - Math.pow(1 - k, 3);
+    },
+    easeInCubic: function (k) {
+      return k * k * k;
     },
     easeOutBack: function (k) {
       const c1 = 1.70158;
@@ -77,7 +91,7 @@ window.CF = window.CF || {};
   CF.Easing = Easing;
 
   // Interpolate between two poses. Returns a target object (re-uses `out` if provided).
-  // Hot-path friendly: no object allocation when `out` is supplied.
+  // Hot-path friendly: zero object allocation when `out` is supplied.
   function interpolatePose(from, to, rawT, easeName, out) {
     out = out || {};
     const easeFn = (easeName && Easing[easeName]) ? Easing[easeName] : Easing.easeInOut;
@@ -87,7 +101,6 @@ window.CF = window.CF || {};
     for (let i = 0; i < POSE_FIELDS.length; i++) {
       const key = POSE_FIELDS[i];
       if (key === 'airborne') {
-        // Boolean: switches at mid-point or if either is airborne
         out.airborne = k < 0.5 ? !!from.airborne : !!to.airborne;
         continue;
       }
@@ -100,8 +113,8 @@ window.CF = window.CF || {};
   CF.interpolatePose = interpolatePose;
 
   // Clone a pose object
-  function clonePose(src) {
-    const dst = {};
+  function clonePose(src, dst) {
+    dst = dst || {};
     for (let i = 0; i < POSE_FIELDS.length; i++) {
       const k = POSE_FIELDS[i];
       if (src[k] !== undefined) dst[k] = src[k];
@@ -147,10 +160,8 @@ window.CF = window.CF || {};
     let hipY;
 
     if (pose.airborne) {
-      // In air: hip position is controlled by drop and dy
       hipY = groundY - RIG.hipYOffset + drop + dy;
     } else {
-      // On ground: lowest foot touches groundY exactly
       const lowestFootDelta = computeLowestFootRelativeY(pose);
       hipY = groundY - lowestFootDelta;
     }
@@ -218,22 +229,31 @@ window.CF = window.CF || {};
   }
   CF.computeJoints = computeJoints;
 
-  // Draw helper: line between two points
+  // Draw helper: line between two points with 0.5px rounding
   function drawLine(ctx, x1, y1, x2, y2) {
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+    ctx.moveTo(r05(x1), r05(y1));
+    ctx.lineTo(r05(x2), r05(y2));
     ctx.stroke();
   }
 
-  // Draw stick figure on canvas
-  // options: { facing: 1|-1, ink: '#hex', accent: '#hex', debug: boolean, breath: number, swordColor: '#hex' }
+  /**
+   * Draw stick figure on canvas
+   * Follows anim/STYLE.md:
+   * 1. One line weight for the whole body (lineWidth 4, round caps and joins).
+   * 2. Sword in accent color (lineWidth 3).
+   * 3. Head is a plain outline circle (radius 9, lineWidth 4).
+   * 4. One thin headband line across the forehead (lineWidth 2).
+   * 5. Coordinates rounded to nearest 0.5px.
+   * 6. Silhouette mode: solid black geometry (#000000) with solid filled head.
+   */
   function drawFighter(ctx, x, pose, options) {
     options = options || {};
     const facing = (options.facing !== undefined) ? options.facing : 1;
-    const ink = options.ink || '#E5E7EB';
-    const accent = options.accent || '#EF4444';
-    const swordColor = options.swordColor || '#EF9F27';
+    const isSilhouette = !!options.silhouette;
+    const ink = isSilhouette ? '#000000' : (options.ink || '#E5E7EB');
+    const accent = isSilhouette ? '#000000' : (options.accent || '#EF4444');
+    const swordColor = isSilhouette ? '#000000' : (options.swordColor || accent);
     const groundY = (options.groundY !== undefined) ? options.groundY : RIG.groundY;
     const breath = (options.breath !== undefined) ? options.breath : 0;
     const debug = !!options.debug;
@@ -241,7 +261,7 @@ window.CF = window.CF || {};
     ctx.save();
 
     // 1. Position and facing mirror
-    ctx.translate(x, 0);
+    ctx.translate(r05(x), 0);
     ctx.scale(facing, 1);
 
     // Apply dx along facing (dx is positive forward)
@@ -249,7 +269,7 @@ window.CF = window.CF || {};
     const dy = pose.dy || 0;
     const drop = pose.drop || 0;
 
-    // Breathing offset (small sine offsets on lean and forearms)
+    // Breathing offset: applies only while idle (breathWeight is 0 during moves)
     const br = breath;
     const lean = (pose.lean || 0) + br * 1.5;
 
@@ -272,61 +292,57 @@ window.CF = window.CF || {};
     if (pose.rot) {
       const cx = (hx + sx) / 2;
       const cy = (hy + sy) / 2;
-      ctx.translate(cx, cy);
+      ctx.translate(r05(cx), r05(cy));
       ctx.rotate((pose.rot * Math.PI) / 180);
-      ctx.translate(-cx, -cy);
+      ctx.translate(-r05(cx), -r05(cy));
     }
 
+    // Body styling: Rule 1 - lineWidth 4, round caps and joins
     ctx.strokeStyle = ink;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 2. BACK ARM (drawn behind body with alpha 0.55 for depth)
-    ctx.save();
-    ctx.globalAlpha = (ctx.globalAlpha || 1) * 0.55;
+    // 2. BACK ARM
     const bex = sx + vX(pose.bau || 0, RIG.upperArm);
     const bey = sy + vY(pose.bau || 0, RIG.upperArm);
-    const bhx = bex + vX((pose.bal || 0) + br * 3, RIG.forearm);
-    const bhy = bey + vY((pose.bal || 0) + br * 3, RIG.forearm);
+    const bhx = bex + vX((pose.bal || 0) + br * 2, RIG.forearm);
+    const bhy = bey + vY((pose.bal || 0) + br * 2, RIG.forearm);
     drawLine(ctx, sx, sy, bex, bey);
     drawLine(ctx, bex, bey, bhx, bhy);
 
-    // 3. BACK LEG (drawn behind body with alpha 0.55)
+    // 3. BACK LEG
     const bkx = hx + vX(pose.blu || 0, RIG.thigh);
     const bky = hy + vY(pose.blu || 0, RIG.thigh);
     const bfx = bkx + vX(pose.bll || 0, RIG.shin);
     const bfy = bky + vY(pose.bll || 0, RIG.shin);
     drawLine(ctx, hx, hy, bkx, bky);
     drawLine(ctx, bkx, bky, bfx, bfy);
-    ctx.restore();
 
     // 4. TORSO
     drawLine(ctx, hx, hy, sx, sy);
 
-    // 5. HEAD
+    // 5. HEAD (Plain outline circle, radius 9, lineWidth 4; solid filled in silhouette mode)
     const headX = sx + vX(torsoAngle, RIG.headOffset);
     const headY = sy + vY(torsoAngle, RIG.headOffset);
     ctx.beginPath();
-    ctx.arc(headX, headY, RIG.headRadius, 0, Math.PI * 2);
+    ctx.arc(r05(headX), r05(headY), RIG.headRadius, 0, Math.PI * 2);
+    if (isSilhouette) {
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+    }
     ctx.stroke();
 
-    // 6. ACCENT HEADBAND & SCARF (tells fighters apart)
-    ctx.save();
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 2.5;
-    // Headband horizontal stripe across forehead
-    ctx.beginPath();
-    ctx.arc(headX, headY, RIG.headRadius - 0.5, -Math.PI * 0.15, Math.PI * 0.4);
-    ctx.stroke();
-    // Flowing ribbon behind head
-    const ribbonAngle = torsoAngle - 60 + br * 5;
-    const rx1 = headX - vX(ribbonAngle, RIG.headRadius + 1);
-    const ry1 = headY - vY(ribbonAngle, RIG.headRadius + 1);
-    const rx2 = rx1 - 8 - br * 2;
-    const ry2 = ry1 + 6 + br * 3;
-    drawLine(ctx, rx1, ry1, rx2, ry2);
-    ctx.restore();
+    // 6. ACCENT HEADBAND (Single thin line across forehead for identification; omitted in silhouette)
+    if (!isSilhouette) {
+      ctx.save();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(r05(headX), r05(headY), RIG.headRadius - 0.5, -Math.PI * 0.15, Math.PI * 0.4);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // 7. FRONT LEG
     const fkx = hx + vX(pose.flu || 0, RIG.thigh);
@@ -339,48 +355,38 @@ window.CF = window.CF || {};
     // 8. FRONT ARM
     const fex = sx + vX(pose.au || 0, RIG.upperArm);
     const fey = sy + vY(pose.au || 0, RIG.upperArm);
-    const fhx = fex + vX((pose.al || 0) + br * 3, RIG.forearm);
-    const fhy = fey + vY((pose.al || 0) + br * 3, RIG.forearm);
+    const fhx = fex + vX((pose.al || 0) + br * 2, RIG.forearm);
+    const fhy = fey + vY((pose.al || 0) + br * 2, RIG.forearm);
     drawLine(ctx, sx, sy, fex, fey);
     drawLine(ctx, fex, fey, fhx, fhy);
 
-    // 9. SWORD
+    // 9. SWORD (Accent color, lineWidth 3, round caps)
     const stx = fhx + vX(pose.sw || 0, RIG.sword);
     const sty = fhy + vY(pose.sw || 0, RIG.sword);
     ctx.save();
     ctx.strokeStyle = swordColor;
     ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
     drawLine(ctx, fhx, fhy, stx, sty);
-    // Small hilt crossguard
-    const hiltAngle = (pose.sw || 0) + 90;
-    const hx1 = fhx + vX(hiltAngle, 4);
-    const hy1 = fhy + vY(hiltAngle, 4);
-    const hx2 = fhx - vX(hiltAngle, 4);
-    const hy2 = fhy - vY(hiltAngle, 4);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#D1D5DB';
-    drawLine(ctx, hx1, hy1, hx2, hy2);
     ctx.restore();
 
     // 10. DEBUG SKELETON OVERLAY (if requested)
     if (debug) {
       ctx.save();
-      ctx.fillStyle = '#10B981'; // Green joint dots
+      ctx.fillStyle = '#10B981';
       const joints = [
         [hx, hy], [sx, sy], [headX, headY],
         [fkx, fky], [ffx, ffy], [bkx, bky], [bfx, bfy],
-        [fex, fey], [fhx, fhy], [bex, bey], [bhx, bhy],
-        [stx, sty]
+        [fex, fey], [fhx, fhy], [bex, bey], [bhx, bhy]
       ];
       for (let i = 0; i < joints.length; i++) {
         ctx.beginPath();
-        ctx.arc(joints[i][0], joints[i][1], 2.5, 0, Math.PI * 2);
+        ctx.arc(r05(joints[i][0]), r05(joints[i][1]), 2, 0, Math.PI * 2);
         ctx.fill();
       }
-      // Sword tip highlight
       ctx.fillStyle = '#F59E0B';
       ctx.beginPath();
-      ctx.arc(stx, sty, 3, 0, Math.PI * 2);
+      ctx.arc(r05(stx), r05(sty), 2.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }

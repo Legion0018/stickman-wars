@@ -48,6 +48,8 @@
       align-items: center;
       border-bottom: 1px solid var(--surface-border);
       padding-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     h1 {
@@ -74,7 +76,7 @@
       font-size: 0.85rem;
     }
 
-    /* Canvas Stage */
+    /* Canvas Stage - Fixed logical dimensions, no stretching (Rule 2) */
     .stage-card {
       background: var(--surface);
       border: 1px solid var(--surface-border);
@@ -90,8 +92,7 @@
       background: #0B1120;
       border: 1px solid #1E293B;
       border-radius: 4px;
-      width: 100%;
-      max-width: 640px;
+      width: 640px;
       height: 220px;
       display: block;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
@@ -104,8 +105,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      width: 100%;
-      max-width: 640px;
+      width: 640px;
       padding: 6px 0;
       border-top: 1px solid var(--surface-border);
     }
@@ -114,6 +114,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-wrap: wrap;
     }
 
     button {
@@ -175,6 +176,10 @@
     @media (max-width: 720px) {
       .grid-2 {
         grid-template-columns: 1fr;
+      }
+      #labCanvas, .toolbar {
+        width: 100%;
+        max-width: 640px;
       }
     }
 
@@ -323,6 +328,62 @@
       font-size: 0.82rem;
       border-radius: var(--radius);
     }
+
+    /* Contact Sheet Viewer Styles */
+    .contact-move-row {
+      background: #090D16;
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .contact-move-header {
+      font-size: 0.84rem;
+      color: #CBD5E1;
+      font-family: var(--font-mono);
+      border-bottom: 1px solid #1E293B;
+      padding-bottom: 4px;
+    }
+
+    .contact-frames-strip {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+
+    .contact-frame-cell {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid #1E293B;
+      border-radius: 4px;
+      padding: 4px;
+      background: #0B1120;
+    }
+
+    .contact-frame-cell canvas {
+      display: block;
+      border-radius: 3px;
+    }
+
+    .contact-frame-label {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: #94A3B8;
+      text-align: center;
+    }
+
+    .contact-frame-label.strike-tag {
+      color: #EF4444;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -331,11 +392,17 @@
     <header>
       <div>
         <h1>Code Fighters <span class="badge">Animation Lab</span></h1>
-        <div class="header-sub">Phase 1: Stick Figure Combat Rig, Easing &amp; Zero-Allocation Physics</div>
+        <div class="header-sub">Visual Quality Pass: Sharp Rendering, Crisp Silhouettes, Snappy Timing</div>
       </div>
       <div class="btn-group">
+        <label class="slider-control" style="font-weight: 600; color: #F8FAFC;">
+          <input type="checkbox" id="silhouetteToggle"> Silhouette Mode (Rule 3)
+        </label>
         <label class="slider-control">
-          <input type="checkbox" id="debugSkeleton"> Show Skeleton Overlay
+          <input type="checkbox" id="extraFxToggle"> Extra FX (Rule 8)
+        </label>
+        <label class="slider-control">
+          <input type="checkbox" id="debugSkeleton"> Skeleton
         </label>
       </div>
     </header>
@@ -360,6 +427,9 @@
 
         <div class="btn-group">
           <button id="playAllBtn" class="primary">▶ Play All Group 1</button>
+          <button id="generateContactSheetBtn" style="border-color: #38BDF8; color: #38BDF8;">
+            🖼 Contact Sheet (2x)
+          </button>
         </div>
       </div>
     </div>
@@ -452,12 +522,8 @@
         </div>
 
         <div class="readout-box">
-          <div class="readout-col" id="readoutA">
-            <!-- Populated dynamically -->
-          </div>
-          <div class="readout-col" id="readoutB">
-            <!-- Populated dynamically -->
-          </div>
+          <div class="readout-col" id="readoutA"></div>
+          <div class="readout-col" id="readoutB"></div>
         </div>
 
         <div class="card-title" style="margin-top: 4px;">
@@ -467,6 +533,19 @@
 
         <div class="log-box" id="eventLog">
           <div class="log-row" style="color: #64748B;">Ready. Waiting for action events...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contact Sheet Viewer Section -->
+    <div class="card">
+      <div class="card-title">
+        <span>Visual Review Contact Sheet (2x Scale, 8 Frames per Move)</span>
+        <span style="font-size: 0.75rem; color: var(--text-muted)">Click "Contact Sheet (2x)" in toolbar to render</span>
+      </div>
+      <div id="contactSheetContainer">
+        <div style="color: #64748B; font-size: 0.8rem; padding: 8px;">
+          Click the "🖼 Contact Sheet (2x)" button in the toolbar above to generate high-resolution keyframe strips for every move. You can toggle "Silhouette Mode" to inspect silhouettes in high contrast!
         </div>
       </div>
     </div>
@@ -489,9 +568,7 @@
               <th>Persistent</th>
             </tr>
           </thead>
-          <tbody id="moveTableBody">
-            <!-- Populated dynamically -->
-          </tbody>
+          <tbody id="moveTableBody"></tbody>
         </table>
       </div>
     </div>

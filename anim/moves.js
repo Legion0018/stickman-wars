@@ -1,5 +1,10 @@
 // anim/moves.js - Code Fighters Move Catalog & Keyframe Sequences
 // Classic script format: attaches directly to window.CF
+// Follows anim/STYLE.md:
+// - Rule 4 (Per-keyframe easing: smooth windup, snappy 50-90ms strike, contact pause, slow recovery).
+// - Rule 5 (Anticipation and overshoot).
+// - Preserves all CONTRACT.md timings: strike times, tellMs, windupMs, hold windows.
+// - 1.9s identical pose rule for enemyAttack and feint; clearly different at 2.4s.
 window.CF = window.CF || {};
 
 (function () {
@@ -203,6 +208,10 @@ window.CF = window.CF || {};
   // --- Dynamic Move Keyframe Builders ---
 
   // Build keyframes for enemyAttack
+  // Rule: Must be 100% in enemyCoil at 1.9s (1900ms).
+  // Tell event fires at tellMs (2000ms).
+  // At 2.4s (2400ms), firmly and clearly in tellH or tellV!
+  // Fast strike at windupMs (3000ms) landing at 3120ms with hit-stop.
   function buildEnemyAttack(opts) {
     opts = opts || {};
     let tellMs = opts.tellMs;
@@ -225,17 +234,20 @@ window.CF = window.CF || {};
     const totalMs = windupMs + sweepMs + recoverMs;
     const strikeMs = windupMs + sweepMs;
 
-    const tellPoseName = (dir === 'v') ? 'tellV' : 'tellH';
-    const strikePoseName = (dir === 'v') ? 'strikeV' : 'strikeH';
+    const tellPose = (dir === 'v') ? P.tellV : P.tellH;
+    const strikePose = (dir === 'v') ? P.strikeV : P.strikeH;
 
+    // Strict 1.9s identical pose guarantee:
+    // From 0ms to tellMs, holds P.enemyCoil without divergence.
     const keyframes = [
       { t: 0, pose: P.enemyCoil, ease: 'easeOut' },
-      { t: tellMs, pose: P.enemyCoil, ease: 'linear' },
-      { t: Math.min(windupMs, tellMs + 220), pose: P[tellPoseName] || P.tellH, ease: 'easeInOut' },
-      { t: windupMs, pose: P[tellPoseName] || P.tellH, ease: 'easeIn' },
-      { t: windupMs + sweepMs, pose: P[strikePoseName] || P.strikeH, ease: 'easeOut' },
-      { t: windupMs + sweepMs + 160, pose: P.slashRecover, ease: 'easeInOut' },
-      { t: totalMs, pose: P.idle, ease: 'easeOut' }
+      { t: tellMs, pose: P.enemyCoil, ease: 'linear' }, // At 1900ms, strictly enemyCoil!
+      { t: Math.min(windupMs - 400, tellMs + 280), pose: tellPose, ease: 'easeInOut' }, // At 2300-2400ms, tell is complete
+      { t: windupMs, pose: tellPose, ease: 'easeIn' },  // Tension hold
+      { t: windupMs + sweepMs, pose: strikePose, ease: 'easeOut' }, // Snappy strike action (strikeMs)
+      { t: windupMs + sweepMs + 60, pose: strikePose, ease: 'linear' }, // Micro contact pause (2 frames)
+      { t: windupMs + sweepMs + 160, pose: P.slashRecover, ease: 'easeOut' }, // Settle
+      { t: totalMs, pose: P.idle, ease: 'easeOut' } // Deliberate recovery
     ];
 
     const events = [
@@ -257,6 +269,9 @@ window.CF = window.CF || {};
   }
 
   // Build keyframes for feint
+  // Identical to enemyAttack at 1.9s (enemyCoil) and 2.4s (tell pose).
+  // At windupMs (3000ms), cancels into shrug instead of striking.
+  // Never fires 'strike' event.
   function buildFeint(opts) {
     opts = opts || {};
     let tellMs = opts.tellMs;
@@ -274,24 +289,23 @@ window.CF = window.CF || {};
     }
 
     const dir = opts.dir || 'h';
-    const shrugMs = 200;
-    const holdShrugMs = 150;
-    const recoverMs = 200;
+    const shrugMs = 160;
+    const holdShrugMs = 140;
+    const recoverMs = 100;
     const totalMs = windupMs + shrugMs + holdShrugMs + recoverMs;
 
-    const tellPoseName = (dir === 'v') ? 'tellV' : 'tellH';
+    const tellPose = (dir === 'v') ? P.tellV : P.tellH;
 
     const keyframes = [
       { t: 0, pose: P.enemyCoil, ease: 'easeOut' },
-      { t: tellMs, pose: P.enemyCoil, ease: 'linear' },
-      { t: Math.min(windupMs, tellMs + 220), pose: P[tellPoseName] || P.tellH, ease: 'easeInOut' },
-      { t: windupMs, pose: P[tellPoseName] || P.tellH, ease: 'easeIn' },
-      { t: windupMs + shrugMs, pose: P.feintShrug, ease: 'easeOut' },
+      { t: tellMs, pose: P.enemyCoil, ease: 'linear' }, // Identical at 1.9s
+      { t: Math.min(windupMs - 400, tellMs + 280), pose: tellPose, ease: 'easeInOut' }, // Distinct at 2.4s
+      { t: windupMs, pose: tellPose, ease: 'easeIn' },
+      { t: windupMs + shrugMs, pose: P.feintShrug, ease: 'easeOut' }, // Snappy shrug
       { t: windupMs + shrugMs + holdShrugMs, pose: P.feintShrug, ease: 'linear' },
       { t: totalMs, pose: P.idle, ease: 'easeOut' }
     ];
 
-    // Feint fires 'tell' event, but NEVER fires 'strike' event
     const events = [
       { t: tellMs, name: 'tell', data: { dir: dir } }
     ];
@@ -316,9 +330,10 @@ window.CF = window.CF || {};
     const leapMs = 300;
     const slamMs = 200;
     const impactTime = bannerMs + chargeMs + leapMs + slamMs; // 1200ms
-    const recoverMs = 300;
+    const pauseMs = 60;
+    const recoverMs = 240;
     const returnMs = 300;
-    const totalMs = impactTime + recoverMs + returnMs; // 1800ms
+    const totalMs = impactTime + pauseMs + recoverMs + returnMs; // 1800ms
 
     const keyframes = [
       { t: 0, pose: P.specialCharge, ease: 'easeOut' },
@@ -326,12 +341,13 @@ window.CF = window.CF || {};
       { t: bannerMs + chargeMs, pose: P.specialCharge, ease: 'easeIn' },
       { t: bannerMs + chargeMs + leapMs, pose: P.specialLeap, ease: 'easeOut' },
       { t: impactTime, pose: P.specialSlam, ease: 'easeIn' },
-      { t: impactTime + recoverMs, pose: P.specialRecover, ease: 'easeInOut' },
+      { t: impactTime + pauseMs, pose: P.specialSlam, ease: 'linear' }, // Contact pause
+      { t: impactTime + pauseMs + recoverMs, pose: P.specialRecover, ease: 'easeOut' },
       { t: totalMs, pose: P.idle, ease: 'easeOut' }
     ];
 
     const events = [
-      { t: 0, name: 'banner', data: { text: 'SPECIAL SLAM', subtext: 'DEVASTATING CRASH' } },
+      { t: 0, name: 'banner', data: { text: 'SPECIAL SLAM', subtext: 'CRITICAL IMPACT' } },
       { t: impactTime, name: 'strike', data: { strikeIndex: 0, tag: 'slam' } }
     ];
 
@@ -366,7 +382,7 @@ window.CF = window.CF || {};
     },
 
     // -------------------------------------------------------------------------
-    // 2. DEFENCE & DODGES
+    // 2. DEFENCE & DODGES (Snappy dodge, clear hold window, smooth recover)
     // -------------------------------------------------------------------------
     stepLeft: {
       name: 'stepLeft',
@@ -375,10 +391,13 @@ window.CF = window.CF || {};
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 140, pose: P.stepLeftOut, ease: 'easeOut' },
-        { t: 320, pose: P.idle, ease: 'easeInOut' }
+        { t: 80, pose: P.stepLeftOut, ease: 'easeOut' },   // Fast displacement (80ms)
+        { t: 220, pose: P.stepLeftOut, ease: 'linear' },   // Hold window
+        { t: 320, pose: P.idle, ease: 'easeOut' }          // Slower recovery
       ],
-      events: []
+      events: [
+        { t: 80, name: 'dust', data: { count: 3 } }
+      ]
     },
 
     stepRight: {
@@ -388,10 +407,13 @@ window.CF = window.CF || {};
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 140, pose: P.stepRightOut, ease: 'easeOut' },
-        { t: 320, pose: P.idle, ease: 'easeInOut' }
+        { t: 80, pose: P.stepRightOut, ease: 'easeOut' },  // Fast displacement (80ms)
+        { t: 220, pose: P.stepRightOut, ease: 'linear' },  // Hold window
+        { t: 320, pose: P.idle, ease: 'easeOut' }          // Slower recovery
       ],
-      events: []
+      events: [
+        { t: 80, name: 'dust', data: { count: 3 } }
+      ]
     },
 
     jump: {
@@ -400,16 +422,16 @@ window.CF = window.CF || {};
       totalMs: 550,
       strikeMs: null,
       keyframes: [
-        { t: 0, pose: P.idle, ease: 'easeIn' },
-        { t: 70, pose: P.jumpCrouch, ease: 'easeOut' },
-        { t: 260, pose: P.jumpApex, ease: 'easeIn' },
-        { t: 400, pose: P.jumpFall, ease: 'easeIn' },
-        { t: 470, pose: P.jumpLand, ease: 'easeOut' },
-        { t: 550, pose: P.idle, ease: 'easeOut' }
+        { t: 0, pose: P.idle, ease: 'easeInOut' },
+        { t: 60, pose: P.jumpCrouch, ease: 'easeInOut' }, // Anticipation crouch
+        { t: 240, pose: P.jumpApex, ease: 'easeOut' },    // Explosive rise
+        { t: 400, pose: P.jumpFall, ease: 'easeIn' },     // Gravity fall
+        { t: 470, pose: P.jumpLand, ease: 'easeOut' },    // Impact landing & compression overshoot
+        { t: 550, pose: P.idle, ease: 'easeOut' }         // Settle to stance
       ],
       events: [
-        { t: 70, name: 'dust', data: { count: 6 } },
-        { t: 470, name: 'land', data: { count: 8 } }
+        { t: 60, name: 'dust', data: { count: 3 } },
+        { t: 470, name: 'land', data: { count: 4 } }
       ]
     },
 
@@ -420,9 +442,9 @@ window.CF = window.CF || {};
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 90, pose: P.duck, ease: 'linear' },
-        { t: 250, pose: P.duck, ease: 'easeInOut' },
-        { t: 350, pose: P.idle, ease: 'easeOut' }
+        { t: 70, pose: P.duck, ease: 'easeOut' },   // Snappy drop beneath attacks (70ms)
+        { t: 250, pose: P.duck, ease: 'linear' },   // Safe hold window
+        { t: 350, pose: P.idle, ease: 'easeOut' }   // Slower rise
       ],
       events: []
     },
@@ -434,9 +456,9 @@ window.CF = window.CF || {};
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 90, pose: P.block, ease: 'linear' },
-        { t: 300, pose: P.block, ease: 'easeInOut' },
-        { t: 400, pose: P.idle, ease: 'easeOut' }
+        { t: 70, pose: P.block, ease: 'easeOut' },   // Instant sword guard snap (70ms)
+        { t: 310, pose: P.block, ease: 'linear' },   // Solid guard hold window
+        { t: 400, pose: P.idle, ease: 'easeOut' }    // Slower lowering
       ],
       events: []
     },
@@ -444,17 +466,23 @@ window.CF = window.CF || {};
     // -------------------------------------------------------------------------
     // 3. BASIC ATTACK & REACTIONS
     // -------------------------------------------------------------------------
+    // Slash:
+    // 0-110ms: windup (smooth anticipation leaning back)
+    // 110-180ms: fast 70ms strike sweep landing at exactly 180ms!
+    // 180-220ms: contact pause & subtle overshoot (40ms)
+    // 220-400ms: deliberate slower recovery (180ms)
     slash: {
       name: 'slash',
       tags: ['attack'],
       totalMs: 400,
       strikeMs: 180,
       keyframes: [
-        { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 90, pose: P.slashWindup, ease: 'easeIn' },
-        { t: 180, pose: P.slashStrike, ease: 'easeOut' },
-        { t: 280, pose: P.slashRecover, ease: 'easeInOut' },
-        { t: 400, pose: P.idle, ease: 'easeOut' }
+        { t: 0, pose: P.idle, ease: 'easeInOut' },
+        { t: 110, pose: P.slashWindup, ease: 'easeInOut' }, // Anticipation
+        { t: 180, pose: P.slashStrike, ease: 'easeOut' },   // Fast 70ms strike!
+        { t: 220, pose: P.slashOvershoot, ease: 'linear' }, // Micro contact pause / overshoot
+        { t: 300, pose: P.slashRecover, ease: 'easeOut' },  // Settle
+        { t: 400, pose: P.idle, ease: 'easeOut' }           // Slower recovery
       ],
       events: [
         { t: 180, name: 'strike', data: { strikeIndex: 0, tag: 'strike' } }
@@ -468,14 +496,13 @@ window.CF = window.CF || {};
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 70, pose: P.hurt, ease: 'easeInOut' },
-        { t: 220, pose: P.hurtRecover, ease: 'easeInOut' },
-        { t: 350, pose: P.idle, ease: 'easeOut' }
+        { t: 60, pose: P.hurt, ease: 'easeOut' },           // Instant violent snap back (60ms)
+        { t: 160, pose: P.hurtRecover, ease: 'linear' },    // Recoil settle
+        { t: 350, pose: P.idle, ease: 'easeOut' }           // Return to ready
       ],
       events: []
     },
 
-    // Block recoil reaction when taking a hit while blocking
     blockRecoil: {
       name: 'blockRecoil',
       tags: ['reaction', 'block'],
@@ -483,8 +510,8 @@ window.CF = window.CF || {};
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.block, ease: 'easeOut' },
-        { t: 60, pose: P.blockRecoil, ease: 'easeInOut' },
-        { t: 220, pose: P.block, ease: 'easeInOut' },
+        { t: 50, pose: P.blockRecoil, ease: 'easeOut' },   // Sharp shield recoil
+        { t: 180, pose: P.block, ease: 'linear' },         // Regain balance
         { t: 320, pose: P.idle, ease: 'easeOut' }
       ],
       events: []
@@ -499,10 +526,11 @@ window.CF = window.CF || {};
       totalMs: 300,
       strikeMs: 130,
       keyframes: [
-        { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 70, pose: P.weakSlashWindup, ease: 'easeIn' },
-        { t: 130, pose: P.weakSlashStrike, ease: 'easeOut' },
-        { t: 220, pose: P.slashRecover, ease: 'easeInOut' },
+        { t: 0, pose: P.idle, ease: 'easeInOut' },
+        { t: 70, pose: P.weakSlashWindup, ease: 'easeInOut' },
+        { t: 130, pose: P.weakSlashStrike, ease: 'easeOut' }, // Snappy 60ms jab
+        { t: 170, pose: P.weakSlashStrike, ease: 'linear' },  // Contact pause
+        { t: 230, pose: P.slashRecover, ease: 'easeOut' },
         { t: 300, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
@@ -516,10 +544,11 @@ window.CF = window.CF || {};
       totalMs: 600,
       strikeMs: 320,
       keyframes: [
-        { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 180, pose: P.strongSlashWindup, ease: 'easeIn' },
-        { t: 320, pose: P.strongSlashStrike, ease: 'easeOut' },
-        { t: 460, pose: P.slashRecover, ease: 'easeInOut' },
+        { t: 0, pose: P.idle, ease: 'easeInOut' },
+        { t: 230, pose: P.strongSlashWindup, ease: 'easeInOut' }, // Heavy slow windup
+        { t: 320, pose: P.strongSlashStrike, ease: 'easeOut' },   // Crushing 90ms strike
+        { t: 380, pose: P.strongSlashStrike, ease: 'linear' },   // Heavy contact pause
+        { t: 480, pose: P.slashRecover, ease: 'easeOut' },
         { t: 600, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
@@ -534,13 +563,14 @@ window.CF = window.CF || {};
       strikeMs: 200,
       strikeTimes: [200, 480, 750],
       keyframes: [
-        { t: 0, pose: P.idle, ease: 'easeIn' },
-        { t: 90, pose: P.slashWindup, ease: 'easeIn' },
-        { t: 200, pose: P.comboSlash1, ease: 'easeOut' },
-        { t: 340, pose: P.tellH, ease: 'easeInOut' },
-        { t: 480, pose: P.comboSlash2, ease: 'easeOut' },
-        { t: 620, pose: P.tellV, ease: 'easeInOut' },
-        { t: 750, pose: P.comboOverhead, ease: 'easeOut' },
+        { t: 0, pose: P.idle, ease: 'easeInOut' },
+        { t: 120, pose: P.slashWindup, ease: 'easeInOut' },
+        { t: 200, pose: P.comboSlash1, ease: 'easeOut' }, // Hit 1
+        { t: 360, pose: P.tellH, ease: 'easeInOut' },
+        { t: 480, pose: P.comboSlash2, ease: 'easeOut' }, // Hit 2
+        { t: 640, pose: P.tellV, ease: 'easeInOut' },
+        { t: 750, pose: P.comboOverhead, ease: 'easeOut' }, // Hit 3
+        { t: 810, pose: P.comboOverhead, ease: 'linear' }, // Final pause
         { t: 900, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
@@ -572,13 +602,13 @@ window.CF = window.CF || {};
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeIn' },
-        { t: 250, pose: P.knockdownFall, ease: 'easeIn' },
+        { t: 240, pose: P.knockdownFall, ease: 'easeIn' },
         { t: 500, pose: P.knockdownFlat, ease: 'linear' },
         { t: 750, pose: P.duck, ease: 'easeOut' },
         { t: 900, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 480, name: 'dust', data: { count: 12 } }
+        { t: 480, name: 'dust', data: { count: 5 } }
       ]
     },
 
@@ -591,9 +621,9 @@ window.CF = window.CF || {};
       persistent: true,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeOut' },
-        { t: 200, pose: P.jumpCrouch, ease: 'easeOut' },
-        { t: 400, pose: P.victoryHop, ease: 'easeInOut' },
-        { t: 600, pose: P.victoryPose, ease: 'easeOut' },
+        { t: 180, pose: P.jumpCrouch, ease: 'easeOut' },
+        { t: 380, pose: P.victoryHop, ease: 'easeInOut' },
+        { t: 580, pose: P.victoryPose, ease: 'easeOut' },
         { t: 800, pose: P.victoryPose, ease: 'linear' }
       ],
       events: []
@@ -648,13 +678,13 @@ window.CF = window.CF || {};
       strikeMs: null,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeIn' },
-        { t: 90, pose: P.jumpCrouch, ease: 'easeOut' },
+        { t: 80, pose: P.jumpCrouch, ease: 'easeOut' },
         { t: 300, pose: P.backflipTuck, ease: 'linear' },
         { t: 480, pose: P.backflipLand, ease: 'easeOut' },
         { t: 600, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 480, name: 'land', data: { count: 8 } }
+        { t: 480, name: 'land', data: { count: 4 } }
       ]
     },
 
@@ -665,13 +695,14 @@ window.CF = window.CF || {};
       strikeMs: 220,
       keyframes: [
         { t: 0, pose: P.idle, ease: 'easeIn' },
-        { t: 90, pose: P.dashThrustDash, ease: 'easeIn' },
+        { t: 80, pose: P.dashThrustDash, ease: 'easeIn' },
         { t: 220, pose: P.dashThrustExtend, ease: 'easeOut' },
-        { t: 360, pose: P.slashRecover, ease: 'easeInOut' },
+        { t: 270, pose: P.dashThrustExtend, ease: 'linear' }, // Contact pause
+        { t: 370, pose: P.slashRecover, ease: 'easeInOut' },
         { t: 500, pose: P.idle, ease: 'easeOut' }
       ],
       events: [
-        { t: 90, name: 'dust', data: { count: 6 } },
+        { t: 80, name: 'dust', data: { count: 3 } },
         { t: 220, name: 'strike', data: { strikeIndex: 0, tag: 'thrust' } }
       ]
     },

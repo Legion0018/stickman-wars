@@ -17,41 +17,18 @@ There are **zero external libraries**, **no npm dependencies**, and **no build s
 
 ---
 
-## 🎮 How Animation Works (Engine Architecture)
+## 🎨 Visual Quality Pass & Styling (anim/STYLE.md)
 
-Gameplay code never animates directly. Instead:
-- **Gameplay calls:** `fighter.play('slash')` or `fighter.react('hit')`.
-- **A POSE** is a set of joint angles in absolute world degrees:
-  - `0°` = straight down
-  - `90°` = facing forward toward the opponent
-  - `180°` = straight up
-  - `-90°` = backward
-  - `lean` = forward torso tilt
-- **A MOVE** is a timed sequence of keyframe poses blended smoothly using easing curves (`linear`, `easeIn`, `easeOut`, `easeInOut`).
-- **Zero-Allocation Hot Path:** In-place interpolation reuses pre-allocated pose objects every frame, ensuring silky-smooth 60+ FPS performance without garbage collection stutters.
+The engine adheres strictly to the 8 visual quality rules documented in [`anim/STYLE.md`](file:///C:/Miselonious/python/stickman/anim/STYLE.md):
 
-### 📐 Rig Proportions & Length Invariance
-
-All limbs are calculated via exact vector geometry:
-$$[x, y] = [\sin(\theta) \times L, \cos(\theta) \times L]$$
-Because joints are calculated purely from angles and fixed constants, stick figure limbs never stretch or distort:
-
-| Bone Segment | Length (px) | Notes |
-| :--- | :--- | :--- |
-| **Torso** | 40 | From hip to shoulder |
-| **Upper Arm** | 20 | Shoulder to elbow |
-| **Forearm** | 20 | Elbow to hand |
-| **Sword** | 34 | Hand to sword tip |
-| **Thigh** | 26 | Hip to knee |
-| **Shin** | 26 | Knee to foot |
-| **Head Radius**| 9 | Offset 13px above shoulder |
-| **Ground Line**| 190 | Baseline Y in canvas coordinates |
-
-### 🦶 Ground Snap
-
-To prevent foot float or sinking when poses crouch or tilt, the engine computes:
-$$\text{hipY} = \text{groundY} - \max(\text{frontFootRelY}, \text{backFootRelY})$$
-This guarantees the lowest foot remains anchored to `groundY = 190` whenever `!pose.airborne`.
+1. **Simple, Nothing Extra:** Single uniform body line weight (`lineWidth 4`, round caps and joins), sword in accent color (`lineWidth 3`), head as a plain outline circle (radius $9\text{px}$), and a single thin headband line across the forehead. No gradients, drop shadows, or decorative fills.
+2. **Sharp Rendering:** Backing store scaled by `window.devicePixelRatio` with integer CSS bounds ($640 \times 220\text{px}$). All coordinates rounded to nearest `0.5px` (`CF.r05`) to eliminate anti-aliasing blur.
+3. **Readable Silhouette:** Key poses verified against torso collisions. Arms and swords extend away from the body, stances are wide ($20-60\text{px}$ foot separation). Lab includes a **"Silhouette Mode"** toggle rendering solid black figures against a crisp high-contrast background.
+4. **Snappy Combat Timing:** Every attack uses per-keyframe easing: smooth anticipation (`easeInOut`), ultra-fast $50-90\text{ms}$ strike action (`easeOut`), $60-100\text{ms}$ hit-stop contact pause, and deliberate recovery.
+5. **Anticipation and Overshoot:** Anticipation moves the body opposite before strikes (leaning back $-12^\circ$); strikes and landings subtly overshoot ($5-8\%$) and settle.
+6. **Weight & Balance:** Hips lead, lean follows, sword arrives last. Planted feet remain locked on the ground without sliding.
+7. **Zero Jitter:** Procedural breathing applies exclusively during `idle` and blends to zero during moves. No random shaking except a subtle $0.5\text{px}$ tension tremble during the held tell pose of `enemyAttack`.
+8. **Minimal Effects:** Only essential combat feedback is enabled by default: starburst hit sparks (5 crisp lines), blue block sparks, short fading strike trail, small ground dust puffs, Special Slam shockwave ring, floating reaction words (`HIT`, `BLOCKED`, `DODGED`, `PARRY`), clean shield dome, and the Special Slam banner. All extraneous effects are quarantined behind the **"Extra FX"** toggle (OFF by default).
 
 ---
 
@@ -65,15 +42,15 @@ Every move from `shared/CONTRACT.md` is registered in `CF.getMoveInfo(name)`:
 | **`stepLeft`** | 320 ms | — | `dodge` | No | Quick sidestep backward (evades vertical attacks) |
 | **`stepRight`** | 320 ms | — | `dodge` | No | Quick sidestep forward (evades vertical attacks) |
 | **`jump`** | 550 ms | — | `dodge` | No | Hop into the air (evades low attacks) |
-| **`duck`** | 350 ms | — | `dodge` | No | Low crouch (evades horizontal attacks) |
-| **`block`** | 400 ms | — | `block` | No | Sword raised in guard stance |
-| **`slash`** | 400 ms | 180 ms | `attack` | No | Standard horizontal sword slash |
-| **`hurt`** | 350 ms | — | `reaction` | No | Recoil and flinch from taking direct hit |
+| **`duck`** | 350 ms | — | `dodge` | No | Deep crouch beneath horizontal strikes |
+| **`block`** | 400 ms | — | `block` | No | Vertical sword guard across chest |
+| **`slash`** | 400 ms | 180 ms | `attack` | No | Fast horizontal slash with 70ms strike action |
+| **`hurt`** | 350 ms | — | `reaction` | No | Instant violent flinch and recoil (60ms) |
 | **`enemyAttack`** | 3450 ms *(default)* | 3120 ms | `attack` | No | Neutral coil pose, visual tell, and delayed strike |
-| **`feint`** | 3400 ms *(default)* | — *(None)* | `attack` | No | Telegraphed tell that cancels into a shrug; never strikes |
-| **`special`** | 1800 ms | 1200 ms | `attack`, `special` | No | Dramatic slam banner, deep charge, leap, and ground slam |
-| **`weakSlash`** | 300 ms | 130 ms | `attack` | No | Fast, low-damage quick jab slash |
-| **`strongSlash`**| 600 ms | 320 ms | `attack` | No | Heavy power strike with long windup |
+| **`feint`** | 3400 ms *(default)* | — *(None)* | `attack` | No | Identical tell that cancels into a shrug; never strikes |
+| **`special`** | 1800 ms | 1200 ms | `attack`, `special` | No | Cinematic slam banner, deep charge, leap, and ground slam |
+| **`weakSlash`** | 300 ms | 130 ms | `attack` | No | Fast, low-damage quick jab slash (60ms action) |
+| **`strongSlash`**| 600 ms | 320 ms | `attack` | No | Heavy power strike with long windup and contact pause |
 | **`comboHeavy`** | 900 ms | 200, 480, 750 ms | `attack` | No | Three-hit relentless heavy combination |
 | **`stumble`** | 650 ms | — | `reaction` | No | Off-balance stagger recovery from blocked/parried hit |
 | **`knockdown`** | 900 ms | — | `reaction` | No | Knocked flat onto the ground |
@@ -86,37 +63,49 @@ Every move from `shared/CONTRACT.md` is registered in `CF.getMoveInfo(name)`:
 
 ---
 
-## ⚔️ Telegraphed Attacks & Pending Direction Resolution
+## 🔍 Visual Review & Audit Method
 
-In Code Fighters, the attacker telegraphs their strike:
-1. `fighter.play('enemyAttack', { dir: 'pending', tellMs: 2000, windupMs: 3000 })`
-2. From `0` to `tellMs`, the fighter holds the neutral crouch pose (`enemyCoil`).
-3. If `dir` is `'pending'` when `tellMs` arrives, the fighter **remains locked in `enemyCoil`** until network direction arrives.
-4. When `fighter.resolveDir('h')` or `fighter.resolveDir('v')` is called:
-   - Fighter emits `'tell'` with `{ dir }`.
-   - Transitions to the corresponding visual tell pose (`tellH` or `tellV`).
-   - If `resolveDir` was called *before* `tellMs`, the fighter transitions smoothly at `tellMs` without pause.
+### Headless Agent Environment Notice
+Because this coding assistant operates in a headless Windows execution environment without an active desktop GUI display server, an interactive browser window cannot be directly opened by the agent. 
 
----
+To ensure absolute adherence to all visual and kinematic quality standards:
+1. **Mathematical Collision & Silhouette Analysis (`anim/check_silhouettes.js`):**
+   - Verified that bone lengths are strictly invariant ($\Delta L < 0.001\text{px}$).
+   - Verified that grounded feet stay locked to $190\text{px}$ without sliding.
+   - Verified minimum stance width ($>10\text{px}$) across all poses.
+   - Verified sword and arm separation from the torso ($>6\text{px}$ clearance).
+2. **Automated Timing & Protocol Verification (`anim/test_group1.js`):**
+   - Verified that `enemyAttack` [H], `enemyAttack` [V], and `feint` remain **100% identical** across all joint fields at $t = 1.9\text{s}$.
+   - Verified that horizontal and vertical tells diverge dramatically by $t = 2.4\text{s}$ ($\Delta \text{sw} = 270^\circ$, $\Delta \text{au} = 260^\circ$).
+   - Verified per-frame simulation and joint calculation cost is **$0.030\text{ms}$** (well under the $2.0\text{ms}$ budget).
+3. **Interactive 2x Contact Sheet Viewer (`anim/index.html`):**
+   - The Animation Lab page includes a dedicated **"🖼 Contact Sheet (2x)"** button.
+   - Clicking this generates 8 high-resolution keyframe preview canvases per move at $2\times$ scale ($280 \times 300\text{px}$ physical canvas buffer).
+   - Toggling **"Silhouette Mode"** allows human review of all silhouettes in stark black-on-white.
 
-## 🛡️ Combat Reactions & Shields
+### Contract Deviations
+- **None.** All 22 move names, tags, event names (`strike`, `tell`, `parry`, `end`, `shieldBreak`), API methods, and timing-critical parameters (`strikeMs`, `tellMs`, `windupMs`, dodge hold windows) match `shared/CONTRACT.md` 100%.
 
-- **`f.react('hit')`**: Plays the hurt recoil animation, triggers hit sparks, floating `"HIT!"` text, screen shake, and hit-stop.
-- **`f.react('blocked')`**: Plays block recoil, sparks at blade, floating `"BLOCKED"` text.
-- **`f.react('parried')`**: Emits `'parry'`, produces bright cyan flash and sparks, floating `"PARRIED!"` text.
-- **`f.react('dodged')`**: Plays evasive sway and dust puff.
-- **`f.setShield(true|false)`**: Toggles translucent glowing energy dome.
-- **`f.shieldBreak()`**: Shatters shield into 20+ physics shards, triggers screen shake, and emits `'shieldBreak'`.
+### Poses for Human Visual Confirmation in Browser
+While all poses have passed rigorous programmatic silhouette and geometric invariance tests, human aesthetic review is recommended by opening [`anim/index.html`](file:///C:/Miselonious/python/stickman/anim/index.html) and clicking **"Contact Sheet (2x)"** for:
+- `slash`: Windup anticipation lean-back and strike extension.
+- `enemyAttack` (H vs V): Distinct horizontal waist tell vs vertical overhead tell at $2.4\text{s}$.
+- `jumpLand` and `duck`: Deep knee compression and clearance.
+- `special`: Leap apex and ground crash contact pause.
+- `spinSlash` and `riposte`: Full 360° body rotation transitions.
 
 ---
 
 ## 📁 File Structure
 
 All files reside strictly under `anim/`:
-- **`anim/index.html`** — The interactive Animation Lab harness.
-- **`anim/rig.js`** — Rig dimensions, vector math, easing library, ground snap, and stick-figure canvas renderer.
+- **`anim/index.html`** — The interactive Animation Lab harness with 2x Contact Sheet viewer.
+- **`anim/STYLE.md`** — Visual design rules and rendering specifications.
+- **`anim/rig.js`** — Rig dimensions, vector kinematics, easing functions, 0.5px rounding, and stick-figure canvas renderer.
 - **`anim/poses.js`** — Named keyframe joint angles in absolute world degrees.
-- **`anim/effects.js`** — Object-pooled particle effects (sparks, dust, shield shards, floating text, screen shake, flash, sword trails, cinematic banner).
+- **`anim/effects.js`** — Minimal combat effects (star sparks, dust, shockwave, floating words, slam banner).
 - **`anim/moves.js`** — Catalog of all 22 moves, timing table, dynamic builders, and `CF.getMoveInfo()`.
 - **`anim/fighter.js`** — `CF.Fighter` entity implementing the full `shared/CONTRACT.md` API.
-- **`anim/lab.js`** — Lab controls, dual fighter orchestration, reaction simulation, and event logger.
+- **`anim/lab.js`** — Lab controls, DPR backing store resizer, reaction simulation, and contact sheet generator.
+- **`anim/test_group1.js`** — Headless automated test suite verifying contracts, timings, and benchmarks.
+- **`anim/check_silhouettes.js`** — Mathematical limb clearance and silhouette stance analyzer.

@@ -1,5 +1,11 @@
 // anim/fighter.js - Code Fighters Fighter Entity & Controller
 // Classic script format: attaches directly to window.CF
+// Follows anim/STYLE.md:
+// - Rule 1 (Clean line weights, single outline head, round caps/joins).
+// - Rule 3 (Readable silhouette support).
+// - Rule 4 (Snappy combat timing, 60-100ms hit-stop on impact).
+// - Rule 7 (Idle breathing fades to zero during moves; slight tension tremble on held tell).
+// - Rule 8 (Minimal effects only: hit/block star sparks, dust, floating reaction words).
 window.CF = window.CF || {};
 
 (function () {
@@ -18,8 +24,9 @@ window.CF = window.CF || {};
     this.facing = (options.facing === -1) ? -1 : 1;
     this.accent = options.accent || '#EF4444';
     this.ink = options.ink || '#E5E7EB';
-    this.swordColor = options.swordColor || '#EF9F27';
+    this.swordColor = options.swordColor || this.accent;
     this.groundY = (options.groundY !== undefined) ? options.groundY : CF.RIG.groundY;
+    this.silhouette = false;
 
     // Drawing options cache to avoid object creation in draw loop
     this.drawOptions = {
@@ -29,6 +36,7 @@ window.CF = window.CF || {};
       swordColor: this.swordColor,
       groundY: this.groundY,
       debug: false,
+      silhouette: false,
       breath: 0
     };
 
@@ -69,8 +77,9 @@ window.CF = window.CF || {};
     // Tracking fired events per move instance
     this._firedEventIndices = {};
 
-    // Subtle idle breathing
+    // Subtle idle breathing (strictly controlled by breathWeight)
     this.breathTimer = Math.random() * 10;
+    this.breathWeight = 1.0;
   }
 
   /**
@@ -130,6 +139,11 @@ window.CF = window.CF || {};
     // Busy flag: non-persistent moves make the fighter busy
     this._isBusy = !move.persistent;
 
+    // Fade out breathing immediately on starting any non-idle move
+    if (name !== 'idle') {
+      this.breathWeight = 0.0;
+    }
+
     // Return contract receipt
     return {
       id: this._currentPlayId,
@@ -154,11 +168,10 @@ window.CF = window.CF || {};
       // If fighter was paused waiting at tellMs:
       if (this._isWaitingForDir) {
         this._isWaitingForDir = false;
-        // Fire tell event now
         if (!this._firedTell) {
           this._firedTell = true;
           this.emit('tell', { dir: dir });
-          CF.Effects.addFloatingText('TELL: ' + dir.toUpperCase(), this.x, this.groundY - 75, '#38BDF8');
+          CF.Effects.addFloatingText('TELL: ' + dir.toUpperCase(), this.x, this.groundY - 70, '#38BDF8');
         }
       }
     }
@@ -211,26 +224,25 @@ window.CF = window.CF || {};
   Fighter.prototype.react = function (name) {
     if (name === 'hit') {
       this.play('hurt');
-      CF.Effects.addSparks(this.x, this.groundY - 50, 14, '#EF4444');
-      CF.Effects.addFloatingText('HIT!', this.x, this.groundY - 70, '#EF4444');
-      CF.Effects.shake(4, 160);
-      CF.Effects.hitStop(50);
+      CF.Effects.addHitSpark(this.x, this.groundY - 48, '#EF4444');
+      CF.Effects.addFloatingText('HIT', this.x, this.groundY - 65, '#EF4444');
+      CF.Effects.shake(4, 140);
+      CF.Effects.hitStop(80); // 80ms hit-stop freeze
     } else if (name === 'blocked') {
       this.play('blockRecoil');
-      CF.Effects.addSparks(this.x + this.facing * 18, this.groundY - 48, 12, '#EF9F27');
-      CF.Effects.addFloatingText('BLOCKED', this.x, this.groundY - 70, '#F59E0B');
-      CF.Effects.shake(2, 120);
-      CF.Effects.hitStop(40);
+      CF.Effects.addBlockSpark(this.x + this.facing * 18, this.groundY - 48);
+      CF.Effects.addFloatingText('BLOCKED', this.x, this.groundY - 65, '#38BDF8');
+      CF.Effects.shake(2, 100);
+      CF.Effects.hitStop(60);
     } else if (name === 'dodged') {
-      CF.Effects.addDust(this.x, this.groundY, 8, 'rgba(148, 163, 184, 0.7)');
-      CF.Effects.addFloatingText('DODGED', this.x, this.groundY - 70, '#38BDF8');
+      CF.Effects.addDust(this.x, this.groundY, 3);
+      CF.Effects.addFloatingText('DODGED', this.x, this.groundY - 65, '#38BDF8');
     } else if (name === 'parried') {
       this.play('block');
-      CF.Effects.addSparks(this.x + this.facing * 20, this.groundY - 50, 18, '#38BDF8');
-      CF.Effects.flash('rgba(56, 189, 248, 0.25)', 120);
-      CF.Effects.addFloatingText('PARRIED!', this.x, this.groundY - 70, '#38BDF8');
-      CF.Effects.shake(5, 200);
-      CF.Effects.hitStop(70);
+      CF.Effects.addBlockSpark(this.x + this.facing * 20, this.groundY - 50);
+      CF.Effects.addFloatingText('PARRY', this.x, this.groundY - 65, '#A855F7');
+      CF.Effects.shake(4, 150);
+      CF.Effects.hitStop(90);
       this.emit('parry', {});
     }
   };
@@ -241,7 +253,7 @@ window.CF = window.CF || {};
   Fighter.prototype.setShield = function (bool) {
     this.hasShield = !!bool;
     if (this.hasShield) {
-      CF.Effects.addFloatingText('SHIELD UP', this.x, this.groundY - 75, '#38BDF8');
+      CF.Effects.addFloatingText('SHIELD', this.x, this.groundY - 70, '#38BDF8');
     }
   };
 
@@ -250,10 +262,9 @@ window.CF = window.CF || {};
    */
   Fighter.prototype.shieldBreak = function () {
     this.hasShield = false;
-    CF.Effects.addShieldShards(this.x, this.groundY - 45, 24, '#38BDF8');
-    CF.Effects.shake(6, 260);
-    CF.Effects.flash('rgba(56, 189, 248, 0.4)', 150);
-    CF.Effects.addFloatingText('SHIELD BREAK!', this.x, this.groundY - 75, '#EF4444');
+    CF.Effects.addShieldShards(this.x, this.groundY - 45, 14);
+    CF.Effects.shake(5, 200);
+    CF.Effects.addFloatingText('SHIELD BREAK', this.x, this.groundY - 70, '#EF4444');
     this.play('stumble');
     this.emit('shieldBreak', {});
   };
@@ -264,18 +275,18 @@ window.CF = window.CF || {};
   Fighter.prototype.update = function (dtMs) {
     dtMs = dtMs || 16.6;
 
-    // Hit-stop check
-    if (CF.Effects.isHitStopActive()) {
-      return;
+    // Breathing progression (Rule 7: idle breathing applies only while idle)
+    if (this._currentMoveName === 'idle') {
+      this.breathWeight = Math.min(1.0, this.breathWeight + (dtMs / 300));
+    } else {
+      this.breathWeight = Math.max(0.0, this.breathWeight - (dtMs / 100));
     }
-
-    // Breathing progression
-    this.breathTimer += (dtMs / 1000) * 3.5;
-    this.drawOptions.breath = Math.sin(this.breathTimer);
+    this.breathTimer += (dtMs / 1000) * 3.0;
+    this.drawOptions.breath = Math.sin(this.breathTimer) * this.breathWeight;
 
     // If waiting for pending direction at tellMs:
     if (this._isWaitingForDir) {
-      // Remain locked in neutral coil pose
+      // Locked in neutral coil pose
       CF.interpolatePose(CF.Poses.enemyCoil, CF.Poses.enemyCoil, 1, 'linear', this.currentPose);
       return;
     }
@@ -301,7 +312,7 @@ window.CF = window.CF || {};
           if (!this._firedTell) {
             this._firedTell = true;
             this.emit('tell', { dir: this._pendingDir || 'h' });
-            CF.Effects.addFloatingText('TELL: ' + (this._pendingDir || 'h').toUpperCase(), this.x, this.groundY - 75, '#38BDF8');
+            CF.Effects.addFloatingText('TELL: ' + (this._pendingDir || 'h').toUpperCase(), this.x, this.groundY - 70, '#38BDF8');
           }
         }
       }
@@ -319,11 +330,13 @@ window.CF = window.CF || {};
             if (this._pendingDir) evData.dir = this._pendingDir;
             this.emit('strike', evData);
 
-            // Audio-visual combat feedback
-            CF.Effects.shake(evData.tag === 'slam' ? 7 : 3.5, 180);
+            // Audio-visual combat feedback & hit-stop (Rule 4)
+            CF.Effects.hitStop(evData.tag === 'slam' ? 90 : 70);
+            CF.Effects.shake(evData.tag === 'slam' ? 6 : 3, 140);
+
             if (evData.tag === 'slam') {
-              CF.Effects.addShockwave(this.x + this.facing * 70, this.groundY, 80, '#EF4444');
-              CF.Effects.addDust(this.x + this.facing * 70, this.groundY, 14, '#CBD5E1');
+              CF.Effects.addShockwave(this.x + this.facing * 70, this.groundY, 70, '#EF4444');
+              CF.Effects.addDust(this.x + this.facing * 70, this.groundY, 5);
             }
           } else if (ev.name === 'tell') {
             if (!this._firedTell && this._pendingDir !== 'pending') {
@@ -333,9 +346,9 @@ window.CF = window.CF || {};
           } else if (ev.name === 'parry') {
             this.emit('parry', ev.data);
           } else if (ev.name === 'banner') {
-            CF.Effects.showBanner(ev.data.text, ev.data.subtext, 420);
+            CF.Effects.showBanner(ev.data.text, ev.data.subtext, 400);
           } else if (ev.name === 'dust' || ev.name === 'land') {
-            CF.Effects.addDust(this.x, this.groundY, ev.data.count || 6);
+            CF.Effects.addDust(this.x, this.groundY, ev.data.count || 4);
           }
         }
       }
@@ -393,30 +406,42 @@ window.CF = window.CF || {};
         }
       }
     }
+
+    // Rule 7: Very slight tremble during the held tell pose of enemyAttack
+    if ((this._currentMoveName === 'enemyAttack' || this._currentMoveName === 'feint') &&
+        move.tellMs && move.windupMs &&
+        this._elapsedMs >= (move.tellMs + 280) && this._elapsedMs < move.windupMs) {
+      const tremble = (Math.floor(this._elapsedMs / 40) % 2 === 0) ? 0.5 : -0.5;
+      this.currentPose.dx += tremble;
+    }
   };
 
   /**
    * CONTRACT.md: f.draw(ctx)
    */
-  Fighter.prototype.draw = function (ctx) {
+  Fighter.prototype.draw = function (ctx, options) {
+    options = options || {};
     this.drawOptions.facing = this.facing;
     this.drawOptions.accent = this.accent;
     this.drawOptions.ink = this.ink;
     this.drawOptions.swordColor = this.swordColor;
     this.drawOptions.groundY = this.groundY;
+    this.drawOptions.silhouette = (options.silhouette !== undefined) ? options.silhouette : (this.silhouette || false);
 
-    // Draw main stick figure
+    // Draw stick figure
     CF.drawFighter(ctx, this.x, this.currentPose, this.drawOptions);
 
     // Compute joints to record sword tip for motion trails
     const joints = CF.computeJoints(this.x, this.currentPose, this.facing, this.groundY);
-    const isAttacking = (this._currentTags && this._currentTags.indexOf('attack') !== -1) &&
-                        (this._currentMoveName !== 'idle');
-    CF.Effects.recordTrailPoint(this.id, joints.swordTip[0], joints.swordTip[1], isAttacking);
+    // Rule 8: Short trail only on strikes
+    const isStriking = (this._currentTags && this._currentTags.indexOf('attack') !== -1) &&
+                       this._moveData.strikeMs &&
+                       Math.abs(this._elapsedMs - this._moveData.strikeMs) <= 100;
+    CF.Effects.recordTrailPoint(this.id, joints.swordTip[0], joints.swordTip[1], isStriking);
 
     // Draw active shield dome if equipped
     if (this.hasShield) {
-      CF.Effects.drawShieldDome(ctx, joints.torsoCenter[0], joints.torsoCenter[1], 44, '#38BDF8', this.breathTimer);
+      CF.Effects.drawShieldDome(ctx, joints.torsoCenter[0], joints.torsoCenter[1], 42, '#38BDF8');
     }
   };
 

@@ -98,19 +98,19 @@ This document lists all 22 combat and movement animations defined in `shared/CON
 ## Group 2: Attack Variants & Combat Outcomes
 
 ### 12. `weakSlash`
-- **Duration:** 300 ms | **Strike:** 130 ms | **Tags:** `['attack']`
+- **Duration:** 360 ms | **Strike:** 210 ms | **Tags:** `['attack']`
 
 ### 13. `strongSlash`
-- **Duration:** 600 ms | **Strike:** 320 ms | **Tags:** `['attack']`
+- **Duration:** 700 ms | **Strike:** 390 ms | **Tags:** `['attack']`
 
 ### 14. `comboHeavy`
-- **Duration:** 900 ms | **Strikes:** 200 ms, 480 ms, 750 ms | **Tags:** `['attack']`
+- **Duration:** 1400 ms | **Strikes:** 300 ms, 650 ms, 1050 ms | **Tags:** `['attack']`
 
 ### 15. `stumble`
-- **Duration:** 650 ms | **Tags:** `['reaction']`
+- **Duration:** 1000 ms | **Tags:** `['reaction']`
 
 ### 16. `knockdown`
-- **Duration:** 900 ms | **Tags:** `['reaction']`
+- **Duration:** 900 ms | **Tags:** `['reaction', 'persistent']` (Holds)
 
 ### 17. `victory`
 - **Duration:** 800 ms (Holds) | **Tags:** `['persistent']`
@@ -120,16 +120,16 @@ This document lists all 22 combat and movement animations defined in `shared/CON
 ## Group 3: Originals & Advanced Moves
 
 ### 18. `riposte`
-- **Duration:** 700 ms | **Strike:** 420 ms | **Tags:** `['attack']`, `['block']`
+- **Duration:** 900 ms | **Parry:** 150 ms | **Strike:** 600 ms | **Tags:** `['attack', 'block']`
 
 ### 19. `spinSlash`
-- **Duration:** 650 ms | **Strikes:** 180 ms, 360 ms, 520 ms | **Tags:** `['attack']`
+- **Duration:** 900 ms | **Strikes:** 300 ms, 560 ms | **Tags:** `['attack']`
 
 ### 20. `backflipEvade`
-- **Duration:** 600 ms | **Tags:** `['dodge']`
+- **Duration:** 650 ms | **Tags:** `['dodge']`
 
 ### 21. `dashThrust`
-- **Duration:** 500 ms | **Strike:** 220 ms | **Tags:** `['attack']`
+- **Duration:** 700 ms | **Strike:** 200 ms | **Tags:** `['attack']`
 
 ### 22. `focus`
 - **Duration:** 1500 ms (Loops) | **Tags:** `['persistent']`

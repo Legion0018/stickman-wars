@@ -569,6 +569,29 @@
       </div>
     </div>
 
+    <!-- Pose Tweaker Section (Group 4) -->
+    <div class="card" id="poseTweakerCard">
+      <div class="card-title">
+        <span>Interactive Pose Tweaker</span>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <select id="tweakerPoseSelect" style="font-size: 0.8rem; padding: 4px 8px;"></select>
+          <button id="tweakerResetBtn" style="font-size: 0.75rem; padding: 4px 8px;">Reset to Default</button>
+          <button id="copyPoseJsBtn" class="primary" style="font-size: 0.75rem; padding: 4px 10px;">Copy pose as JS</button>
+        </div>
+      </div>
+      <div style="font-size: 0.78rem; color: #94A3B8;">
+        Pick any named keyframe pose and tweak joint angles live. Fighter A updates instantaneously on the canvas stage above.
+      </div>
+      <div id="tweakerSlidersGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 6px;"></div>
+      <div style="margin-top: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.76rem; color: #64748B;">JS Pose Code:</span>
+          <span id="copyConfirmNotice" style="font-size: 0.74rem; color: #34D399; display: none;">Copied to clipboard!</span>
+        </div>
+        <pre id="tweakerJsOutput" style="background: #090D16; border: 1px solid #1E293B; border-radius: var(--radius); padding: 8px; font-size: 0.75rem; overflow-x: auto; color: #38BDF8; margin: 4px 0 0 0; font-family: var(--font-mono);"></pre>
+      </div>
+    </div>
+
     <!-- Move Reference Table -->
     <div class="card">
       <div class="card-title">

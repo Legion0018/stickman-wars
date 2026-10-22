@@ -249,6 +249,7 @@ window.CF = window.CF || {};
 
     bindUI();
     populateMoveTable();
+    initPoseTweaker();
     log('Code Fighters Animation Lab initialized. Visual Quality Pass Active.', 'tell');
 
     // Start Animation Loop
@@ -640,6 +641,160 @@ window.CF = window.CF || {};
     next();
   }
 
+  // --- Pose Tweaker (Group 4) ---
+  const TWEAKER_FIELDS = [
+    { key: 'lean', label: 'Torso Lean', min: -90, max: 90, step: 1, unit: '°' },
+    { key: 'drop', label: 'Crouch Drop', min: 0, max: 40, step: 1, unit: 'px' },
+    { key: 'au', label: 'Front Upper Arm', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'al', label: 'Front Forearm', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'sw', label: 'Sword Angle', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'bau', label: 'Back Upper Arm', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'bal', label: 'Back Forearm', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'flu', label: 'Front Thigh', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'fll', label: 'Front Shin', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'blu', label: 'Back Thigh', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'bll', label: 'Back Shin', min: -180, max: 180, step: 1, unit: '°' },
+    { key: 'dx', label: 'Shift dx', min: -100, max: 100, step: 1, unit: 'px' },
+    { key: 'dy', label: 'Lift dy', min: -100, max: 100, step: 1, unit: 'px' },
+    { key: 'rot', label: 'Body Rotation', min: -360, max: 360, step: 1, unit: '°' }
+  ];
+
+  let currentTweakedPose = null;
+  let activePoseName = 'idle';
+
+  function initPoseTweaker() {
+    const select = document.getElementById('tweakerPoseSelect');
+    const grid = document.getElementById('tweakerSlidersGrid');
+    if (!select || !grid) return;
+
+    // 1. Populate Pose Dropdown
+    select.innerHTML = Object.keys(CF.Poses).map(p => `<option value="${p}">${p}</option>`).join('');
+
+    // 2. Generate Field Sliders
+    grid.innerHTML = TWEAKER_FIELDS.map(f => `
+      <div style="background: #0B1120; border: 1px solid #1E293B; border-radius: 4px; padding: 6px 8px; font-size: 0.74rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+          <span style="color: #94A3B8;">${f.label}:</span>
+          <span id="twk_val_${f.key}" style="font-family: var(--font-mono); font-weight: 600; color: #38BDF8;">0${f.unit}</span>
+        </div>
+        <input type="range" id="twk_input_${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="0" style="width: 100%;">
+      </div>
+    `).join('') + `
+      <div style="background: #0B1120; border: 1px solid #1E293B; border-radius: 4px; padding: 6px 8px; font-size: 0.74rem; display: flex; align-items: center; justify-content: space-between;">
+        <span style="color: #94A3B8;">Airborne (no ground snap):</span>
+        <input type="checkbox" id="twk_input_airborne">
+      </div>
+    `;
+
+    // 3. Bind Sliders
+    TWEAKER_FIELDS.forEach(f => {
+      const input = document.getElementById('twk_input_' + f.key);
+      const valLabel = document.getElementById('twk_val_' + f.key);
+      if (input) {
+        input.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (valLabel) valLabel.textContent = val + f.unit;
+          if (currentTweakedPose) {
+            currentTweakedPose[f.key] = val;
+            applyTweakedPose();
+          }
+        });
+      }
+    });
+
+    const airborneCheck = document.getElementById('twk_input_airborne');
+    if (airborneCheck) {
+      airborneCheck.addEventListener('change', (e) => {
+        if (currentTweakedPose) {
+          currentTweakedPose.airborne = e.target.checked;
+          applyTweakedPose();
+        }
+      });
+    }
+
+    // 4. Select Dropdown Change
+    select.addEventListener('change', (e) => {
+      loadPoseIntoTweaker(e.target.value);
+    });
+
+    // 5. Reset Button
+    const resetBtn = document.getElementById('tweakerResetBtn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        loadPoseIntoTweaker(select.value);
+        log(`Reset pose "${select.value}" to defaults.`);
+      });
+    }
+
+    // 6. Copy Pose as JS Button
+    const copyBtn = document.getElementById('copyPoseJsBtn');
+    const notice = document.getElementById('copyConfirmNotice');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        if (!currentTweakedPose) return;
+        const code = generatePoseJsCode(select.value, currentTweakedPose);
+        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(() => {
+            if (notice) {
+              notice.style.display = 'inline';
+              setTimeout(() => { notice.style.display = 'none'; }, 2000);
+            }
+          }).catch(() => {});
+        }
+        log(`Copied pose '${select.value}' JS to clipboard!`, 'tell');
+      });
+    }
+
+    // Initial Load
+    loadPoseIntoTweaker('idle');
+  }
+
+  function loadPoseIntoTweaker(poseName) {
+    activePoseName = poseName;
+    const basePose = CF.Poses[poseName] || CF.Poses.idle;
+    currentTweakedPose = CF.clonePose(basePose);
+
+    // Update Slider inputs & labels
+    TWEAKER_FIELDS.forEach(f => {
+      const input = document.getElementById('twk_input_' + f.key);
+      const valLabel = document.getElementById('twk_val_' + f.key);
+      const val = currentTweakedPose[f.key] !== undefined ? currentTweakedPose[f.key] : 0;
+      if (input) input.value = val;
+      if (valLabel) valLabel.textContent = val + f.unit;
+    });
+
+    const airborneCheck = document.getElementById('twk_input_airborne');
+    if (airborneCheck) {
+      airborneCheck.checked = !!currentTweakedPose.airborne;
+    }
+
+    applyTweakedPose();
+  }
+
+  function applyTweakedPose() {
+    if (!currentTweakedPose) return;
+    if (fighterA) {
+      fighterA.setPose(currentTweakedPose);
+      fighterA._currentMoveName = 'tweaker (' + activePoseName + ')';
+    }
+    const out = document.getElementById('tweakerJsOutput');
+    if (out) {
+      out.textContent = generatePoseJsCode(activePoseName, currentTweakedPose);
+    }
+    renderCanvas();
+  }
+
+  function generatePoseJsCode(name, p) {
+    return `${name}: {\n` +
+      `  lean: ${p.lean || 0}, drop: ${p.drop || 0},\n` +
+      `  au: ${p.au || 0}, al: ${p.al || 0}, sw: ${p.sw || 0},\n` +
+      `  bau: ${p.bau || 0}, bal: ${p.bal || 0},\n` +
+      `  flu: ${p.flu || 0}, fll: ${p.fll || 0},\n` +
+      `  blu: ${p.blu || 0}, bll: ${p.bll || 0},\n` +
+      `  dx: ${p.dx || 0}, dy: ${p.dy || 0}, rot: ${p.rot || 0}, airborne: ${!!p.airborne}\n` +
+      `}`;
+  }
+
   // --- Contact Sheet Generator (8 Frames per Move at 2x Scale) ---
   function generateContactSheet() {
     const container = document.getElementById('contactSheetContainer');
@@ -784,7 +939,10 @@ window.CF = window.CF || {};
     resizeCanvas: resizeCanvas,
     getFighterA: () => fighterA,
     getFighterB: () => fighterB,
-    generateContactSheet: generateContactSheet
+    generateContactSheet: generateContactSheet,
+    initPoseTweaker: initPoseTweaker,
+    loadPoseIntoTweaker: loadPoseIntoTweaker,
+    generatePoseJsCode: generatePoseJsCode
   };
 
   if (typeof document !== 'undefined') {

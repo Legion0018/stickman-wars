@@ -221,6 +221,13 @@ window.CF = window.CF || {};
   };
 
   /**
+   * Directly sets the current pose for the interactive pose tweaker.
+   */
+  Fighter.prototype.setPose = function (pose) {
+    this.currentPose = CF.clonePose(pose);
+  };
+
+  /**
    * CONTRACT.md: f.react(name)
    * name is 'blocked', 'dodged', 'parried' or 'hit'
    * Addendum 4: Add f.react('hit') as an alias that plays the hurt reaction.

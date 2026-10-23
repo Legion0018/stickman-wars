@@ -21,6 +21,7 @@
   var isPaused = false;
   var isDarkTheme = true;
   var isLoopActive = false;
+  var isDemoReelActive = false;
   var demoReactionMode = 'hurt'; // 'hurt' | 'block' | 'off'
   var lastTimestamp = 0;
 
@@ -35,12 +36,17 @@
     dom.statusMove = document.getElementById('status-move');
     dom.statusSpeed = document.getElementById('status-speed');
     dom.statusJoints = document.getElementById('status-joints');
+    dom.statusPose = document.getElementById('status-pose');
     dom.statusDuration = document.getElementById('status-duration');
     dom.eventLog = document.getElementById('event-log');
 
     dom.toggleTheme = document.getElementById('btn-theme-toggle');
     dom.toggleJoints = document.getElementById('btn-joints-toggle');
     dom.btnStop = document.getElementById('btn-stop');
+    dom.btnPauseToggle = document.getElementById('btn-pause-toggle');
+    dom.btnStepFrame = document.getElementById('btn-step-frame');
+    dom.btnInterrupt = document.getElementById('btn-interrupt');
+    dom.btnClearEffects = document.getElementById('btn-clear-effects');
     dom.btnDemoReel = document.getElementById('btn-demo-reel');
     dom.loopToggle = document.getElementById('chk-loop-move');
     dom.reactionSelect = document.getElementById('select-demo-reaction');
@@ -76,6 +82,11 @@
     if (dom.statusSpeed) dom.statusSpeed.textContent = root.timeScale + 'x';
     if (dom.statusJoints) dom.statusJoints.textContent = activeFighter.showJoints ? 'ON' : 'OFF';
 
+    if (dom.statusPose && activeFighter && activeFighter.currentPose) {
+      var P = activeFighter.currentPose;
+      dom.statusPose.textContent = 'dx:' + Math.round(P.dx || 0) + ' dy:' + Math.round(P.dy || 0) + ' rot:' + Math.round(P.rot || 0) + '°';
+    }
+
     if (dom.statusDuration && moveDef) {
       var eventsText = (moveDef.events && moveDef.events.length) ?
         moveDef.events.map(function(e) { return e.name + '@' + e.timeMs + 'ms'; }).join(', ') : 'none';
@@ -86,7 +97,8 @@
   function triggerOpponentReaction(attacker, eventName) {
     if (demoReactionMode === 'off') return;
     var opponent = (attacker === fighterA) ? fighterB : fighterA;
-    if (opponent.anim && opponent.anim.isPlaying) return; // don't interrupt active move
+    // Don't interrupt if already playing an active attack or hit reaction, but allow interrupting return-to-idle
+    if (opponent.anim && opponent.anim.isPlaying && !opponent.anim.isReturningToIdle) return;
 
     if (demoReactionMode === 'block') {
       opponent.play('block_impact');
@@ -181,20 +193,30 @@
   function runDemoReel() {
     logEvent('Starting <strong>Demo Reel</strong> showcase...', 'action');
     demoReactionMode = 'hurt';
+    isDemoReelActive = true;
+
+    function nextStep(fn) {
+      if (!isDemoReelActive) return Promise.resolve({ cancelled: true });
+      return fn();
+    }
 
     fighterA.play('windup')
-      .then(function() { return fighterA.play('slash'); })
-      .then(function() { return fighterB.play('parry'); })
-      .then(function() { return fighterB.play('counter_riposte'); })
-      .then(function() { return fighterA.play('backflip_dodge'); })
-      .then(function() { return fighterA.play('dash_lunge'); })
-      .then(function() { return fighterB.play('ground_smash'); })
-      .then(function() { return fighterA.play('whirlwind'); })
-      .then(function() { return fighterB.play('defeat'); })
-      .then(function() { return fighterA.play('victory'); })
+      .then(function() { return nextStep(function() { return fighterA.play('slash'); }); })
+      .then(function() { return nextStep(function() { return fighterB.play('parry'); }); })
+      .then(function() { return nextStep(function() { return fighterB.play('counter_riposte'); }); })
+      .then(function() { return nextStep(function() { return fighterA.play('backflip_dodge'); }); })
+      .then(function() { return nextStep(function() { return fighterA.play('dash_lunge'); }); })
+      .then(function() { return nextStep(function() { return fighterB.play('ground_smash'); }); })
+      .then(function() { return nextStep(function() { return fighterA.play('whirlwind'); }); })
+      .then(function() { return nextStep(function() { return fighterB.play('defeat', { hold: true }); }); })
+      .then(function() { return nextStep(function() { return fighterA.play('victory'); }); })
       .then(function() {
+        isDemoReelActive = false;
         logEvent('Demo Reel complete.', 'info');
         updateStatusUI();
+      }).catch(function(err) {
+        isDemoReelActive = false;
+        logEvent('Demo Reel stopped: ' + (err ? err.message : 'cancelled'), 'warn');
       });
   }
 
@@ -221,15 +243,62 @@
     // Move trigger buttons
     document.querySelectorAll('[data-move]').forEach(function(btn) {
       btn.addEventListener('click', function() {
+        isDemoReelActive = false;
         playMoveOnActive(btn.getAttribute('data-move'));
       });
     });
 
     if (dom.btnStop) {
       dom.btnStop.addEventListener('click', function() {
+        isDemoReelActive = false;
         logEvent('Stop called on Fighter ' + activeFighter.id, 'warn');
         activeFighter.stop();
         updateStatusUI();
+      });
+    }
+
+    if (dom.btnPauseToggle) {
+      dom.btnPauseToggle.addEventListener('click', function() {
+        isPaused = !isPaused;
+        dom.btnPauseToggle.textContent = isPaused ? '▶️ Resume' : '⏸️ Pause';
+        dom.btnPauseToggle.classList.toggle('active', isPaused);
+        logEvent(isPaused ? 'Animation PAUSED' : 'Animation RESUMED', 'info');
+      });
+    }
+
+    if (dom.btnStepFrame) {
+      dom.btnStepFrame.addEventListener('click', function() {
+        if (!isPaused) {
+          isPaused = true;
+          if (dom.btnPauseToggle) {
+            dom.btnPauseToggle.textContent = '▶️ Resume';
+            dom.btnPauseToggle.classList.add('active');
+          }
+        }
+        var stepDt = 16.667 * root.timeScale;
+        fighterA.update(stepDt);
+        fighterB.update(stepDt);
+        if (fighterA.anim) fighterA.anim.update(stepDt);
+        if (fighterB.anim) fighterB.anim.update(stepDt);
+        effects.update(stepDt);
+        logEvent('Stepped 1 frame (+' + stepDt.toFixed(1) + 'ms)', 'info');
+        updateStatusUI();
+      });
+    }
+
+    if (dom.btnInterrupt) {
+      dom.btnInterrupt.addEventListener('click', function() {
+        isDemoReelActive = false;
+        logEvent('Triggered mid-move <strong>Interrupt (hurt_light)</strong> on Fighter ' + activeFighter.id, 'warn');
+        activeFighter.play('hurt_light');
+        updateStatusUI();
+      });
+    }
+
+    if (dom.btnClearEffects) {
+      dom.btnClearEffects.addEventListener('click', function() {
+        effects.clear();
+        logEvent('Cleared all particles and visual combat effects', 'info');
       });
     }
 
@@ -370,7 +439,9 @@
     var dt = Math.min(maxDelta, rawDt) * root.timeScale;
 
     if (!isPaused && dt > 0) {
+      if (fighterA.anim) fighterA.anim.update(dt);
       fighterA.update(dt);
+      if (fighterB.anim) fighterB.anim.update(dt);
       fighterB.update(dt);
       effects.update(dt);
     }

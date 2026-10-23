@@ -205,3 +205,47 @@ export function parseStartupParams(locationObj = (typeof window !== 'undefined' 
 
   return result;
 }
+
+/**
+ * Builds a shareable invite URL with pre-configured room code, assigned role,
+ * and optional relay endpoint.
+ * 
+ * @param {object} [options={}]
+ * @param {string} [options.baseUrl] - Base URL (defaults to window.location.href or http://localhost:8000/)
+ * @param {string} [options.room] - Room code (defaults to CONFIG.defaultRoom)
+ * @param {'A'|'B'} [options.role='B'] - Target player role for the invitee
+ * @param {'websocket'|'loopback'} [options.transport='websocket'] - Transport to use
+ * @param {string|null} [options.relay] - Custom WebSocket relay URL to include
+ * @returns {string} The complete shareable URL
+ */
+export function buildInviteUrl(options = {}) {
+  let base = options.baseUrl;
+  if (!base) {
+    if (typeof window !== 'undefined' && window.location && window.location.href) {
+      base = window.location.href;
+    } else {
+      base = 'http://localhost:8000/';
+    }
+  }
+
+  let url;
+  try {
+    url = new URL(base);
+  } catch (_) {
+    url = new URL('http://localhost:8000/');
+  }
+
+  const room = options.room || CONFIG.defaultRoom || 'fight-room-1';
+  const role = options.role || 'B';
+  const transport = options.transport || 'websocket';
+
+  url.searchParams.set('room', room);
+  url.searchParams.set('role', role);
+  url.searchParams.set('transport', transport);
+
+  if (options.relay && options.relay.trim()) {
+    url.searchParams.set('relay', options.relay.trim());
+  }
+
+  return url.toString();
+}

@@ -28,8 +28,18 @@ export function createRelayServer(options = {}) {
   const host = options.host || '0.0.0.0';
 
   const httpServer = createServer((req, res) => {
-    if (req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+    let pathname = '/';
+    try {
+      pathname = new URL(req.url, 'http://localhost').pathname;
+    } catch (_) {
+      pathname = req.url || '/';
+    }
+
+    if (pathname === '/health' || pathname === '/health/') {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
       res.end(JSON.stringify({ status: 'ok', time: Date.now() }));
       return;
     }

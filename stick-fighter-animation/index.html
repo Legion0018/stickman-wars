@@ -55,13 +55,17 @@
           </div>
 
           <div>
-            <div class="section-label">Playback Options</div>
-            <div class="control-row" style="gap: 8px;">
+            <div class="section-label">Playback & Debug</div>
+            <div class="control-row" style="gap: 6px; flex-wrap: wrap;">
               <label class="checkbox-label">
                 <input type="checkbox" id="chk-loop-move">
                 <span>Loop Move</span>
               </label>
-              <button id="btn-stop" class="btn btn-stop">■ Stop</button>
+              <button id="btn-stop" class="btn btn-stop" title="Stop and ease back to idle">■ Stop</button>
+              <button id="btn-pause-toggle" class="btn" title="Pause or resume animation loop">⏸️ Pause</button>
+              <button id="btn-step-frame" class="btn" title="Step one frame forward (16.7ms)">⏭️ Step</button>
+              <button id="btn-interrupt" class="btn" title="Simulate mid-animation hit interrupt">⚡ Interrupt</button>
+              <button id="btn-clear-effects" class="btn" title="Clear all active particles and effects">🧹 Reset FX</button>
             </div>
           </div>
 
@@ -88,6 +92,10 @@
           <div class="stat-chip">
             <span class="stat-label">Speed / Joints</span>
             <span class="stat-value"><span id="status-speed">1x</span> | <span id="status-joints">OFF</span></span>
+          </div>
+          <div class="stat-chip">
+            <span class="stat-label">Pose Transform</span>
+            <span id="status-pose" class="stat-value" style="font-size: 0.82rem;">dx:0 dy:0 rot:0°</span>
           </div>
           <div class="stat-chip" style="grid-column: span 2;">
             <span class="stat-label">Move Timing & Events</span>

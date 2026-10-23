@@ -18,19 +18,40 @@ export class WebSocketTransport extends Transport {
     this.socket = null;
     this.sendQueue = [];
     this._connectionAttempt = 0;
+    this._userClosed = false;
+    this._reconnectAttempts = 0;
+    this._maxReconnectAttempts = 3;
+    this._reconnectTimer = null;
   }
 
   /**
    * Connect to the specified room code
    * @param {string} roomCode 
+   * @param {boolean} [isAutoReconnect=false]
    */
-  connect(roomCode) {
+  connect(roomCode, isAutoReconnect = false) {
+    if (!isAutoReconnect) {
+      this._userClosed = false;
+      this._reconnectAttempts = 0;
+    }
+
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+
     if (this.socket) {
-      this.close();
+      const prevWs = this.socket;
+      this.socket = null;
+      prevWs.onopen = null;
+      prevWs.onmessage = null;
+      prevWs.onerror = null;
+      prevWs.onclose = null;
+      try { prevWs.close(1000, "Reconnecting"); } catch (_) {}
     }
 
     this.roomCode = roomCode || "fight-room-1";
-    this.emitStatus("connecting");
+    this.emitStatus(isAutoReconnect ? "reconnecting" : "connecting");
 
     const attemptId = ++this._connectionAttempt;
 
@@ -54,6 +75,8 @@ export class WebSocketTransport extends Transport {
 
       ws.onopen = () => {
         if (this._connectionAttempt !== attemptId || this.socket !== ws) return;
+
+        this._reconnectAttempts = 0;
 
         // Send in-band join envelope for redundancy and validation
         try {
@@ -92,10 +115,28 @@ export class WebSocketTransport extends Transport {
       ws.onclose = (event) => {
         if (this._connectionAttempt !== attemptId || this.socket !== ws) return;
         this.socket = null;
+
+        if (this._userClosed) {
+          this.emitStatus("disconnected", event.reason || `Connection closed (${event.code})`);
+          return;
+        }
+
         if (this.status === "connecting") {
           this.emitStatus("failed", event.reason || `Connection refused (${event.code})`);
-        } else if (this.status === "connected") {
-          this.emitStatus("disconnected", event.reason || `Connection closed (${event.code})`);
+        } else if (this.status === "connected" || this.status === "reconnecting") {
+          // Attempt bounded reconnection for unexpected socket drops
+          if (this._reconnectAttempts < this._maxReconnectAttempts) {
+            this._reconnectAttempts++;
+            const delay = Math.min(4000, 1000 * Math.pow(1.5, this._reconnectAttempts - 1));
+            this.emitStatus("reconnecting", `Reconnecting (attempt ${this._reconnectAttempts}/${this._maxReconnectAttempts})...`);
+            this._reconnectTimer = setTimeout(() => {
+              if (!this._userClosed) {
+                this.connect(this.roomCode, true);
+              }
+            }, delay);
+          } else {
+            this.emitStatus("disconnected", event.reason || `Connection closed after ${this._maxReconnectAttempts} retries`);
+          }
         }
       };
     } catch (err) {
@@ -133,6 +174,12 @@ export class WebSocketTransport extends Transport {
    * Cleanly close the socket and emit disconnected
    */
   close() {
+    this._userClosed = true;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    this._reconnectAttempts = 0;
     this._connectionAttempt++;
     this.sendQueue = [];
 

@@ -62,17 +62,17 @@ export class PythonSpecialAttackRunner {
       }
 
       if (id && this.pendingResolvers.has(id)) {
-        const { resolve, timer } = this.pendingResolvers.get(id);
+        const { resolve, timer, challenge } = this.pendingResolvers.get(id);
         clearTimeout(timer);
         this.pendingResolvers.delete(id);
         this._emitStatus('ready', 'Execution completed.');
 
         if (type === 'RESULT') {
-          resolve(this._formatUnlockResult(result));
+          resolve(this._formatUnlockResult(result, challenge));
         } else {
           resolve({
             unlocked: false,
-            action: 'special',
+            action: (challenge && challenge.unlockAction) || 'special',
             passed: false,
             error_type: 'WorkerError',
             error_message: error || 'Unknown worker error',
@@ -102,11 +102,11 @@ export class PythonSpecialAttackRunner {
       this.worker = null;
     }
     // Reject any pending promises
-    for (const [id, { resolve, timer }] of this.pendingResolvers.entries()) {
+    for (const [id, { resolve, timer, challenge }] of this.pendingResolvers.entries()) {
       clearTimeout(timer);
       resolve({
         unlocked: false,
-        action: 'special',
+        action: (challenge && challenge.unlockAction) || 'special',
         passed: false,
         error_type: 'TimeoutError',
         error_message: `Execution timed out (${this.timeoutMs}ms limit). Thread terminated to prevent freeze.`,
@@ -128,9 +128,10 @@ export class PythonSpecialAttackRunner {
   /**
    * Execute Python code and evaluate lesson pass/fail
    * @param {string} code 
-   * @returns {Promise<{ unlocked: boolean, action: 'special', passed: boolean, error_type: string|null, error_message: string|null, details: Array }>}
+   * @param {object} [challenge=null] - Optional challenge definition with entrypoint and testCases
+   * @returns {Promise<{ unlocked: boolean, action: string, passed: boolean, error_type: string|null, error_message: string|null, details: Array }>}
    */
-  async runCode(code) {
+  async runCode(code, challenge = null) {
     const worker = this.initWorker();
     const id = ++this.requestId;
 
@@ -146,24 +147,28 @@ export class PythonSpecialAttackRunner {
         this.initWorker();
       }, this.timeoutMs);
 
-      this.pendingResolvers.set(id, { resolve, timer });
+      this.pendingResolvers.set(id, { resolve, timer, challenge });
 
       worker.postMessage({
         id,
         type: 'RUN',
-        code
+        code,
+        challenge
       });
     });
   }
 
   /**
    * Format lesson result into combat unlock contract without direct damage authority
+   * @param {object} [result={}]
+   * @param {object} [challenge=null]
    */
-  _formatUnlockResult(result = {}) {
+  _formatUnlockResult(result = {}, challenge = null) {
     const passed = Boolean(result.passed);
+    const action = (challenge && challenge.unlockAction) || 'special';
     return {
       unlocked: passed,
-      action: 'special', // Action granted upon lesson mastery
+      action,
       passed,
       error_type: result.error_type || null,
       error_message: result.error_message || null,

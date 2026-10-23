@@ -16,7 +16,8 @@
     "test:questions": "node test-question-library.js",
     "test:layout": "node test-layout-split.js",
     "test:multiplayer": "node test-public-multiplayer.js",
-    "test:all": "node test-controls.js && node test-websocket.js && node test-loopback-diagnostics.js && node test-anim-bridge.js && node test-python-challenge.js && node test-question-library.js && node test-layout-split.js && node test-public-multiplayer.js && node anim/test_combat_upgrade.js && node anim/test_reduced_fx.js && node anim/test_group1.js && node anim/test_group2.js && node anim/test_group3.js && node anim/test_group4.js && node anim/check_silhouettes.js",
+    "test:e2e": "node test-deployment-e2e.js",
+    "test:all": "node test-controls.js && node test-websocket.js && node test-loopback-diagnostics.js && node test-anim-bridge.js && node test-python-challenge.js && node test-question-library.js && node test-layout-split.js && node test-public-multiplayer.js && node test-deployment-e2e.js && node anim/test_combat_upgrade.js && node anim/test_reduced_fx.js && node anim/test_group1.js && node anim/test_group2.js && node anim/test_group3.js && node anim/test_group4.js && node anim/check_silhouettes.js",
     "relay": "node server/relay.js"
   },
   "repository": {

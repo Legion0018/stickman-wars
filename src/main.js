@@ -8,38 +8,51 @@
 import { CONFIG } from '../config.js';
 import { Fighter } from './fighter.js';
 import { LoopbackTransport } from './loopback-transport.js';
+import { WebSocketTransport } from './websocket-transport.js';
 import { StatusPanel } from './status-panel.js';
+import { animBridge } from './anim-bridge.js';
+import { ChallengeController } from './challenge-controller.js';
+import {
+  isLocalOrLanHost,
+  resolveWebSocketUrl,
+  resolveDefaultTransport,
+  parseStartupParams,
+  buildInviteUrl,
+} from './net-helpers.js';
 
 // DOM Elements
-const canvas = document.getElementById('game-canvas');
-const ctx = canvas.getContext('2d');
+const hasDoc = typeof document !== 'undefined';
+const canvas = hasDoc ? document.getElementById('game-canvas') : null;
+const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
 
-const transportSelect = document.getElementById('transport-select');
-const roomInput = document.getElementById('room-input');
-const connectBtn = document.getElementById('connect-btn');
-const roleSelectA = document.getElementById('role-a');
-const roleSelectB = document.getElementById('role-b');
+const transportSelect = hasDoc ? document.getElementById('transport-select') : null;
+const roomInput = hasDoc ? document.getElementById('room-input') : null;
+const connectBtn = hasDoc ? document.getElementById('connect-btn') : null;
+const btnCopyInvite = hasDoc ? document.getElementById('btn-copy-invite') : null;
+const inviteFeedback = hasDoc ? document.getElementById('invite-feedback') : null;
+const roleSelectA = hasDoc ? document.getElementById('role-a') : null;
+const roleSelectB = hasDoc ? document.getElementById('role-b') : null;
 
-const btnSlash = document.getElementById('btn-slash');
-const btnBlock = document.getElementById('btn-block');
-const btnDuck = document.getElementById('btn-duck');
-const btnSpecial = document.getElementById('btn-special');
+const btnSlash = hasDoc ? document.getElementById('btn-slash') : null;
+const btnBlock = hasDoc ? document.getElementById('btn-block') : null;
+const btnDuck = hasDoc ? document.getElementById('btn-duck') : null;
+const btnSpecial = hasDoc ? document.getElementById('btn-special') : null;
 
 // Initialize Diagnostics Panel
 const statusPanel = new StatusPanel({
-  transport: document.getElementById('status-transport'),
-  room: document.getElementById('status-room'),
-  badge: document.getElementById('status-badge'),
-  rttLatest: document.getElementById('stat-rtt-latest'),
-  rttMin: document.getElementById('stat-rtt-min'),
-  rttMax: document.getElementById('stat-rtt-max'),
-  rttAvg: document.getElementById('stat-rtt-avg'),
-  rttJitter: document.getElementById('stat-rtt-jitter'),
-  msgSent: document.getElementById('stat-msg-sent'),
-  msgRecv: document.getElementById('stat-msg-recv'),
-  eventLog: document.getElementById('event-log'),
-  copyBtn: document.getElementById('copy-report-btn'),
-  copyFeedback: document.getElementById('copy-feedback'),
+  transport: hasDoc ? document.getElementById('status-transport') : null,
+  room: hasDoc ? document.getElementById('status-room') : null,
+  badge: hasDoc ? document.getElementById('status-badge') : null,
+  rttLatest: hasDoc ? document.getElementById('stat-rtt-latest') : null,
+  rttMin: hasDoc ? document.getElementById('stat-rtt-min') : null,
+  rttMax: hasDoc ? document.getElementById('stat-rtt-max') : null,
+  rttAvg: hasDoc ? document.getElementById('stat-rtt-avg') : null,
+  rttJitter: hasDoc ? document.getElementById('stat-rtt-jitter') : null,
+  msgSent: hasDoc ? document.getElementById('stat-msg-sent') : null,
+  msgRecv: hasDoc ? document.getElementById('stat-msg-recv') : null,
+  eventLog: hasDoc ? document.getElementById('event-log') : null,
+  copyBtn: hasDoc ? document.getElementById('copy-report-btn') : null,
+  copyFeedback: hasDoc ? document.getElementById('copy-feedback') : null,
 });
 
 // Create Fighters
@@ -56,10 +69,59 @@ let pingSeq = 0;
 let pingIntervalId = null;
 
 // Initialize Transport
-let transport = new LoopbackTransport();
-statusPanel.setTransportName("Loopback (Same Browser)");
-statusPanel.setRoomCode(currentRoom);
-statusPanel.setPlayerRole(localRole === 'A' ? "Fighter A (Left)" : "Fighter B (Right)");
+let transport = null;
+
+function initTransport(type) {
+  const chosenType = type || resolveDefaultTransport();
+  if (transport) {
+    disconnectRoom();
+  }
+
+  if (chosenType === 'websocket') {
+    const wsUrl = resolveWebSocketUrl();
+    transport = new WebSocketTransport(wsUrl);
+    statusPanel.setTransportName(`WebSocket Relay (${wsUrl})`);
+  } else {
+    transport = new LoopbackTransport();
+    statusPanel.setTransportName("Loopback (Same Browser)");
+  }
+
+  statusPanel.setRoomCode(currentRoom);
+  statusPanel.setPlayerRole(localRole === 'A' ? "Fighter A (Left)" : "Fighter B (Right)");
+
+  transport.onMessage(handleTransportMessage);
+  transport.onStatus(handleTransportStatus);
+}
+
+// Combat HUD Elements
+const hudHpValA = typeof document !== 'undefined' ? document.getElementById('hud-hp-val-a') : null;
+const hudHpFillA = typeof document !== 'undefined' ? document.getElementById('hud-hp-fill-a') : null;
+const hudHpGhostA = typeof document !== 'undefined' ? document.getElementById('hud-hp-ghost-a') : null;
+const hudHpValB = typeof document !== 'undefined' ? document.getElementById('hud-hp-val-b') : null;
+const hudHpFillB = typeof document !== 'undefined' ? document.getElementById('hud-hp-fill-b') : null;
+const hudHpGhostB = typeof document !== 'undefined' ? document.getElementById('hud-hp-ghost-b') : null;
+
+function updateCombatHud() {
+  if (hudHpValA && hudHpFillA) {
+    const pctA = Math.max(0, Math.min(100, (fighterA.hp / fighterA.maxHp) * 100));
+    hudHpValA.textContent = `${fighterA.hp} / ${fighterA.maxHp}`;
+    hudHpFillA.style.width = `${pctA}%`;
+    if (hudHpGhostA) {
+      setTimeout(() => { if (hudHpGhostA) hudHpGhostA.style.width = `${pctA}%`; }, 250);
+    }
+    hudHpFillA.className = 'hud-hp-bar-fill' + (pctA < 30 ? ' hp-critical' : pctA < 60 ? ' hp-warning' : '');
+  }
+
+  if (hudHpValB && hudHpFillB) {
+    const pctB = Math.max(0, Math.min(100, (fighterB.hp / fighterB.maxHp) * 100));
+    hudHpValB.textContent = `${fighterB.hp} / ${fighterB.maxHp}`;
+    hudHpFillB.style.width = `${pctB}%`;
+    if (hudHpGhostB) {
+      setTimeout(() => { if (hudHpGhostB) hudHpGhostB.style.width = `${pctB}%`; }, 250);
+    }
+    hudHpFillB.className = 'hud-hp-bar-fill' + (pctB < 30 ? ' hp-critical' : pctB < 60 ? ' hp-warning' : '');
+  }
+}
 
 /**
  * Combat Strike Resolution Callback
@@ -70,17 +132,56 @@ statusPanel.setPlayerRole(localRole === 'A' ? "Fighter A (Left)" : "Fighter B (R
 function handleStrikeLand(attacker, target) {
   const outcome = target.checkHit('slash');
   statusPanel.log(`Strike from Fighter ${attacker.id} landed on Fighter ${target.id} -> ${outcome}`, 'combat');
+  animBridge.onCombatResolution(attacker.id, target.id, outcome);
+  updateCombatHud();
+
+  if (isConnected && transport) {
+    try {
+      transport.send({
+        t: 'sync_hp',
+        v: 1,
+        sender: localRole,
+        targetId: target.id,
+        attackerId: attacker.id,
+        outcome: outcome,
+        hpA: fighterA.hp,
+        hpB: fighterB.hp,
+        ts: performance.now(),
+      });
+      statusPanel.incrementSent();
+    } catch (_) {}
+  }
 }
 
 /**
  * Send an action message through transport
  * @param {'slash'|'block'|'duck'|'hurt'|'special'} actionName 
  * @param {'A'|'B'} [senderRole=localRole]
+ * @param {boolean} [isHold=false]
  */
-function broadcastAction(actionName, senderRole = localRole) {
+function broadcastAction(actionName, senderRole = localRole, isHold = false) {
   if (!isConnected) return;
   const msg = {
     t: 'action',
+    v: 1,
+    a: actionName,
+    sender: senderRole,
+    hold: Boolean(isHold),
+    ts: performance.now(),
+  };
+  transport.send(msg);
+  statusPanel.incrementSent();
+}
+
+/**
+ * Send a release message through transport for held actions
+ * @param {'block'|'duck'} actionName
+ * @param {'A'|'B'} [senderRole=localRole]
+ */
+function broadcastRelease(actionName, senderRole = localRole) {
+  if (!isConnected) return;
+  const msg = {
+    t: 'release',
     v: 1,
     a: actionName,
     sender: senderRole,
@@ -94,8 +195,9 @@ function broadcastAction(actionName, senderRole = localRole) {
  * Execute action for a specific fighter (role-independent)
  * @param {'A'|'B'} targetRole
  * @param {'slash'|'block'|'duck'|'special'} actionName 
+ * @param {boolean} [isHold=false]
  */
-function triggerFighterAction(targetRole, actionName) {
+function triggerFighterAction(targetRole, actionName, isHold = false) {
   const actor = targetRole === 'A' ? fighterA : fighterB;
   const opponent = targetRole === 'A' ? fighterB : fighterA;
 
@@ -106,21 +208,38 @@ function triggerFighterAction(targetRole, actionName) {
 
   if (actionName === 'special') {
     actor.playSpecialSlam(() => handleStrikeLand(actor, opponent));
-    broadcastAction('special', targetRole);
+    broadcastAction('special', targetRole, false);
     statusPanel.log(`Fighter ${targetRole} executed SPECIAL SLAM`, 'action');
+    animBridge.onAction(targetRole, 'special', false);
   } else if (actionName === 'slash') {
     actor.playMove('slash', () => handleStrikeLand(actor, opponent));
-    broadcastAction('slash', targetRole);
+    broadcastAction('slash', targetRole, false);
     statusPanel.log(`Fighter ${targetRole} triggered slash`, 'action');
+    animBridge.onAction(targetRole, 'slash', false);
   } else if (actionName === 'block') {
     actor.playMove('block');
-    broadcastAction('block', targetRole);
-    statusPanel.log(`Fighter ${targetRole} blocked`, 'action');
+    broadcastAction('block', targetRole, isHold);
+    statusPanel.log(`Fighter ${targetRole} blocked${isHold ? ' (holding)' : ''}`, 'action');
+    animBridge.onAction(targetRole, 'block', isHold);
   } else if (actionName === 'duck') {
     actor.playMove('duck');
-    broadcastAction('duck', targetRole);
-    statusPanel.log(`Fighter ${targetRole} ducked`, 'action');
+    broadcastAction('duck', targetRole, isHold);
+    statusPanel.log(`Fighter ${targetRole} ducked${isHold ? ' (holding)' : ''}`, 'action');
+    animBridge.onAction(targetRole, 'duck', isHold);
   }
+}
+
+/**
+ * Release a held action for a specific fighter (role-independent)
+ * @param {'A'|'B'} targetRole
+ * @param {'block'|'duck'} actionName
+ */
+function releaseFighterAction(targetRole, actionName) {
+  const actor = targetRole === 'A' ? fighterA : fighterB;
+  actor.setHolding(actionName, false);
+  broadcastRelease(actionName, targetRole);
+  statusPanel.log(`Fighter ${targetRole} released ${actionName}`, 'action');
+  animBridge.onRelease(targetRole, actionName);
 }
 
 /**
@@ -129,14 +248,33 @@ function triggerFighterAction(targetRole, actionName) {
  * @returns {boolean}
  */
 function isEditableElement(element) {
-  if (!element || !(element instanceof HTMLElement)) return false;
+  if (!element || typeof element !== 'object') return false;
+  if (typeof HTMLElement !== 'undefined' && !(element instanceof HTMLElement)) return false;
   const tag = element.tagName;
   return (
     tag === 'INPUT' ||
     tag === 'TEXTAREA' ||
     tag === 'SELECT' ||
-    element.isContentEditable
+    Boolean(element.isContentEditable)
   );
+}
+
+/**
+ * Check if keyboard event should be isolated from controlling fighters
+ * Guarantees 100% keyboard isolation when typing in code editor, console,
+ * inputs, selects, sidebar rail, or any child of the coding workspace.
+ * @param {KeyboardEvent} e
+ * @returns {boolean}
+ */
+function shouldIgnoreGameHotkeys(e) {
+  if (isEditableElement(e.target)) return true;
+  if (e.target && e.target.closest) {
+    if (e.target.closest('#challenge-section')) return true;
+    if (e.target.closest('.coding-workspace-panel')) return true;
+    if (e.target.closest('#sidebar-rail')) return true;
+    if (e.target.closest('.sidebar-rail')) return true;
+  }
+  return false;
 }
 
 /**
@@ -231,6 +369,27 @@ function handleTransportMessage(msg) {
   switch (msg.t) {
     case 'hello': {
       statusPanel.log(`Peer connected as Fighter ${msg.role}`, 'net');
+      if (msg.role === localRole) {
+        statusPanel.log(`Role collision detected: both connected as Fighter ${localRole}. Please switch one player to the opposite role.`, 'warn');
+      }
+      break;
+    }
+
+    case 'sync_hp': {
+      if (msg.sender === localRole) {
+        return;
+      }
+
+      // Authoritative defender synchronization:
+      // Only accept HP reconciliation if the sender was the defender (target) of the strike
+      if (msg.targetId === msg.sender) {
+        if (typeof msg.hpA === 'number' && typeof msg.hpB === 'number') {
+          fighterA.hp = msg.hpA;
+          fighterB.hp = msg.hpB;
+          updateCombatHud();
+          statusPanel.log(`[Reconciled] HP synced from defender (${msg.sender}): outcome=${msg.outcome}, A=${fighterA.hp}, B=${fighterB.hp}`, 'combat');
+        }
+      }
       break;
     }
 
@@ -264,22 +423,54 @@ function handleTransportMessage(msg) {
       const actor = msg.sender === 'A' ? fighterA : fighterB;
       const target = msg.sender === 'A' ? fighterB : fighterA;
 
+      if (msg.hold !== undefined && (msg.a === 'block' || msg.a === 'duck')) {
+        actor.setHolding(msg.a, Boolean(msg.hold));
+      }
+
       if (msg.a === 'special') {
         actor.playSpecialSlam(() => handleStrikeLand(actor, target));
         statusPanel.log(`[Remote] Fighter ${msg.sender} executed SPECIAL SLAM`, 'action');
+        animBridge.onAction(msg.sender, 'special', false);
       } else if (msg.a === 'slash') {
         actor.playMove('slash', () => handleStrikeLand(actor, target));
         statusPanel.log(`[Remote] Fighter ${msg.sender} initiated slash`, 'action');
+        animBridge.onAction(msg.sender, 'slash', false);
       } else if (msg.a === 'block') {
         actor.playMove('block');
-        statusPanel.log(`[Remote] Fighter ${msg.sender} blocked`, 'action');
+        statusPanel.log(`[Remote] Fighter ${msg.sender} blocked${msg.hold ? ' (holding)' : ''}`, 'action');
+        animBridge.onAction(msg.sender, 'block', Boolean(msg.hold));
       } else if (msg.a === 'duck') {
         actor.playMove('duck');
-        statusPanel.log(`[Remote] Fighter ${msg.sender} ducked`, 'action');
+        statusPanel.log(`[Remote] Fighter ${msg.sender} ducked${msg.hold ? ' (holding)' : ''}`, 'action');
+        animBridge.onAction(msg.sender, 'duck', Boolean(msg.hold));
       } else if (msg.a === 'hurt') {
         actor.playMove('hurt');
         statusPanel.log(`[Remote] Fighter ${msg.sender} played hurt`, 'action');
+        animBridge.onAction(msg.sender, 'hurt', false);
       }
+      break;
+    }
+
+    case 'release': {
+      if (msg.sender === localRole) {
+        return;
+      }
+
+      const actor = msg.sender === 'A' ? fighterA : fighterB;
+      if (msg.a === 'block' || msg.a === 'duck') {
+        actor.setHolding(msg.a, false);
+        statusPanel.log(`[Remote] Fighter ${msg.sender} released ${msg.a}`, 'action');
+        animBridge.onRelease(msg.sender, msg.a);
+      }
+      break;
+    }
+
+    case 'leave': {
+      statusPanel.log(`Peer departed room (Fighter ${msg.role || 'Unknown'})`, 'net');
+      fighterA.setHolding('block', false);
+      fighterA.setHolding('duck', false);
+      fighterB.setHolding('block', false);
+      fighterB.setHolding('duck', false);
       break;
     }
 
@@ -347,6 +538,9 @@ function stopPingInterval() {
 function connectRoom(roomCode) {
   currentRoom = roomCode || CONFIG.defaultRoom;
   statusPanel.setRoomCode(currentRoom);
+  fighterA.resetHp();
+  fighterB.resetHp();
+  updateCombatHud();
   transport.connect(currentRoom);
 }
 
@@ -354,39 +548,29 @@ function connectRoom(roomCode) {
  * Disconnect from room
  */
 function disconnectRoom() {
+  if (isConnected) {
+    try {
+      transport.send({ t: 'leave', v: 1, role: localRole });
+      statusPanel.incrementSent();
+    } catch (_) {}
+  }
+  fighterA.setHolding('block', false);
+  fighterA.setHolding('duck', false);
+  fighterB.setHolding('block', false);
+  fighterB.setHolding('duck', false);
+  fighterA.resetHp();
+  fighterB.resetHp();
+  updateCombatHud();
   transport.close();
 }
-
-// Attach Transport Listeners
-transport.onMessage(handleTransportMessage);
-transport.onStatus(handleTransportStatus);
-
-// Auto-connect to default room
-connectRoom(currentRoom);
-
-// UI Event Listeners
-connectBtn.addEventListener('click', () => {
-  if (isConnected) {
-    disconnectRoom();
-  } else {
-    connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
-  }
-});
-
-roomInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
-  }
-});
 
 // Role Switch
 function setRole(role) {
   localRole = role;
   statusPanel.setPlayerRole(role === 'A' ? "Fighter A (Left)" : "Fighter B (Right)");
-  if (role === 'A') {
-    roleSelectA.checked = true;
-  } else {
-    roleSelectB.checked = true;
+  if (roleSelectA && roleSelectB) {
+    roleSelectA.checked = (role === 'A');
+    roleSelectB.checked = (role === 'B');
   }
   updateActionButtonsUI();
   statusPanel.log(`Switched local role to Fighter ${role}`, 'info');
@@ -397,94 +581,281 @@ function setRole(role) {
   }
 }
 
-roleSelectA.addEventListener('change', () => {
-  if (roleSelectA.checked) setRole('A');
-});
-roleSelectB.addEventListener('change', () => {
-  if (roleSelectB.checked) setRole('B');
-});
+if (roleSelectA) {
+  roleSelectA.addEventListener('change', () => {
+    if (roleSelectA.checked) setRole('A');
+  });
+}
+if (roleSelectB) {
+  roleSelectB.addEventListener('change', () => {
+    if (roleSelectB.checked) setRole('B');
+  });
+}
 
-// Initialize action buttons UI according to default role
-updateActionButtonsUI();
+// Transport Selector Change
+if (transportSelect) {
+  transportSelect.addEventListener('change', () => {
+    initTransport(transportSelect.value);
+    connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
+  });
+}
+
+// UI Event Listeners for Connect Button & Room Input
+if (connectBtn) {
+  connectBtn.addEventListener('click', () => {
+    if (isConnected) {
+      disconnectRoom();
+    } else {
+      connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
+    }
+  });
+}
+
+if (roomInput) {
+  roomInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      connectRoom(roomInput.value.trim() || CONFIG.defaultRoom);
+    }
+  });
+}
+
+// Room Invite Link Generation & Copy Handling
+let inviteFeedbackTimer = null;
+function showInviteFeedback(text) {
+  if (!inviteFeedback) return;
+  inviteFeedback.textContent = text;
+  inviteFeedback.style.opacity = '1';
+  if (inviteFeedbackTimer) clearTimeout(inviteFeedbackTimer);
+  inviteFeedbackTimer = setTimeout(() => {
+    if (inviteFeedback) {
+      inviteFeedback.style.opacity = '0';
+      setTimeout(() => { if (inviteFeedback) inviteFeedback.textContent = ''; }, 200);
+    }
+  }, 2500);
+}
+
+function handleCopyInvite() {
+  const targetRole = localRole === 'A' ? 'B' : 'A';
+  const activeRoom = (roomInput && roomInput.value.trim()) || currentRoom || CONFIG.defaultRoom;
+
+  let relayUrl = startupParams.relay || null;
+  if (!relayUrl && transportSelect && transportSelect.value === 'websocket') {
+    const resolved = resolveWebSocketUrl();
+    if (resolved && !resolved.includes('localhost') && !resolved.includes('127.0.0.1')) {
+      relayUrl = resolved;
+    }
+  }
+
+  const inviteUrl = buildInviteUrl({
+    room: activeRoom,
+    role: targetRole,
+    transport: 'websocket',
+    relay: relayUrl,
+  });
+
+  const notifySuccess = () => {
+    showInviteFeedback(`Copied! (Fighter ${targetRole})`);
+    statusPanel.log(`Copied invite link for Fighter ${targetRole} to clipboard: ${inviteUrl}`, 'info');
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(inviteUrl).then(notifySuccess).catch(() => {
+      fallbackCopyText(inviteUrl, targetRole);
+    });
+  } else {
+    fallbackCopyText(inviteUrl, targetRole);
+  }
+}
+
+function fallbackCopyText(text, targetRole) {
+  if (typeof document !== 'undefined') {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showInviteFeedback(`Copied! (Fighter ${targetRole})`);
+      statusPanel.log(`Copied invite link for Fighter ${targetRole} to clipboard`, 'info');
+      return;
+    } catch (_) {}
+  }
+  showInviteFeedback(`Link: ${text.slice(0, 25)}...`);
+}
+
+if (btnCopyInvite) {
+  btnCopyInvite.addEventListener('click', handleCopyInvite);
+}
+
+// Parse startup URL parameters (?role=, ?room=, ?transport=, ?relay=)
+const startupParams = parseStartupParams();
+
+if (startupParams.room) {
+  currentRoom = startupParams.room;
+  if (roomInput) {
+    roomInput.value = currentRoom;
+  }
+}
+
+// Set initial player role (query param ?role=A or ?role=B, default 'A')
+const initialRole = startupParams.role || 'A';
+setRole(initialRole);
+
+// Determine initial transport (defaults to 'websocket' on public/HTTPS origin, 'loopback' locally)
+const initialTransportType = startupParams.transport || resolveDefaultTransport();
+if (transportSelect) {
+  transportSelect.value = initialTransportType;
+}
+
+// Initial transport setup and auto-connect
+initTransport(initialTransportType);
+connectRoom(currentRoom);
 
 // Action Buttons: trigger actions for currently selected player role
-btnSlash.addEventListener('click', () => triggerFighterAction(localRole, 'slash'));
-btnSpecial.addEventListener('click', () => triggerFighterAction(localRole, 'special'));
+if (btnSlash) btnSlash.addEventListener('click', () => triggerFighterAction(localRole, 'slash'));
+if (btnSpecial) btnSpecial.addEventListener('click', () => triggerFighterAction(localRole, 'special'));
 
 // Support both click and press-and-hold for block and duck buttons
-btnBlock.addEventListener('mousedown', () => {
-  const localFighter = localRole === 'A' ? fighterA : fighterB;
-  localFighter.setHolding('block', true);
-  triggerFighterAction(localRole, 'block');
+if (btnBlock) {
+  btnBlock.addEventListener('mousedown', () => {
+    const localFighter = localRole === 'A' ? fighterA : fighterB;
+    localFighter.setHolding('block', true);
+    triggerFighterAction(localRole, 'block', true);
+  });
+}
+if (btnDuck) {
+  btnDuck.addEventListener('mousedown', () => {
+    const localFighter = localRole === 'A' ? fighterA : fighterB;
+    localFighter.setHolding('duck', true);
+    triggerFighterAction(localRole, 'duck', true);
+  });
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('mouseup', () => {
+    if (fighterA.isHoldingBlock) releaseFighterAction('A', 'block');
+    if (fighterA.isHoldingDuck) releaseFighterAction('A', 'duck');
+    if (fighterB.isHoldingBlock) releaseFighterAction('B', 'block');
+    if (fighterB.isHoldingDuck) releaseFighterAction('B', 'duck');
+  });
+}
+
+// Initialize Python Combat Challenge Controller (Hybrid Combat Integration)
+const challengeController = new ChallengeController({
+  onUnlock: (action) => {
+    // Verified Python code unleashes Special Slam for local player
+    triggerFighterAction(localRole, action || 'special', false);
+    statusPanel.log(`[Python] Code verified! Special Slam unleashed for Fighter ${localRole}`, 'combat');
+  },
 });
-btnDuck.addEventListener('mousedown', () => {
-  const localFighter = localRole === 'A' ? fighterA : fighterB;
-  localFighter.setHolding('duck', true);
-  triggerFighterAction(localRole, 'duck');
-});
-window.addEventListener('mouseup', () => {
-  fighterA.setHolding('block', false);
-  fighterA.setHolding('duck', false);
-  fighterB.setHolding('block', false);
-  fighterB.setHolding('duck', false);
-});
+
+if (typeof window !== 'undefined') {
+  window.challengeController = challengeController;
+}
 
 // Role-Independent Keyboard Controls:
 // - Fighter A: A (slash), S (block), D (duck), F (special slam)
 // - Fighter B: J (slash), K (block), L (duck), ; (special slam)
 const activeKeys = new Set();
 
-window.addEventListener('keydown', (e) => {
-  // Ignore keyboard shortcuts while the user is typing in editable controls
-  if (isEditableElement(e.target)) return;
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => {
+    // Global shortcut to toggle Python code workspace (Alt+C)
+    if (e.altKey && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault();
+      challengeController.toggleWorkspace();
+      return;
+    }
 
-  const mapped = getActionFromKey(e);
-  if (!mapped) return;
+    // Strict keyboard isolation: ignore fighting hotkeys while inside code workspace or editable field
+    if (shouldIgnoreGameHotkeys(e)) return;
 
-  // Prevent browser default behavior for mapped keys
-  e.preventDefault();
+    const mapped = getActionFromKey(e);
+    if (!mapped) return;
 
-  const keyId = `${mapped.role}-${mapped.action}`;
-  const isRepeat = activeKeys.has(keyId);
-  activeKeys.add(keyId);
+    // Prevent browser default behavior for mapped keys
+    e.preventDefault();
 
-  const targetFighter = mapped.role === 'A' ? fighterA : fighterB;
+    const keyId = `${mapped.role}-${mapped.action}`;
+    const isRepeat = activeKeys.has(keyId);
+    activeKeys.add(keyId);
 
-  if (mapped.hold) {
-    targetFighter.setHolding(mapped.action, true);
-  }
+    const targetFighter = mapped.role === 'A' ? fighterA : fighterB;
 
-  // Avoid triggering an action repeatedly from a single held key
-  if (isRepeat) {
-    return;
-  }
+    if (mapped.hold) {
+      targetFighter.setHolding(mapped.action, true);
+    }
 
-  triggerFighterAction(mapped.role, mapped.action);
-});
+    // Avoid triggering an action repeatedly from a single held key
+    if (isRepeat) {
+      return;
+    }
 
-window.addEventListener('keyup', (e) => {
-  if (isEditableElement(e.target)) return;
+    triggerFighterAction(mapped.role, mapped.action, mapped.hold);
+  });
 
-  const mapped = getActionFromKey(e);
-  if (!mapped) return;
+  window.addEventListener('keyup', (e) => {
+    // Strict keyboard isolation on keyup as well
+    if (shouldIgnoreGameHotkeys(e)) return;
 
-  const keyId = `${mapped.role}-${mapped.action}`;
-  activeKeys.delete(keyId);
+    const mapped = getActionFromKey(e);
+    if (!mapped) return;
 
-  const targetFighter = mapped.role === 'A' ? fighterA : fighterB;
-  if (mapped.hold) {
-    targetFighter.setHolding(mapped.action, false);
-  }
-});
+    const keyId = `${mapped.role}-${mapped.action}`;
+    activeKeys.delete(keyId);
 
-// Clear active keys when window loses focus to prevent stuck keys
-window.addEventListener('blur', () => {
-  activeKeys.clear();
-  fighterA.setHolding('block', false);
-  fighterA.setHolding('duck', false);
-  fighterB.setHolding('block', false);
-  fighterB.setHolding('duck', false);
-});
+    if (mapped.hold) {
+      releaseFighterAction(mapped.role, mapped.action);
+    }
+  });
+
+  // Clear active keys when window loses focus to prevent stuck keys
+  window.addEventListener('blur', () => {
+    activeKeys.clear();
+    if (fighterA.isHoldingBlock) releaseFighterAction('A', 'block');
+    if (fighterA.isHoldingDuck) releaseFighterAction('A', 'duck');
+    if (fighterB.isHoldingBlock) releaseFighterAction('B', 'block');
+    if (fighterB.isHoldingDuck) releaseFighterAction('B', 'duck');
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (isConnected) {
+      try {
+        transport.send({ t: 'leave', v: 1, role: localRole });
+      } catch (_) {}
+    }
+  });
+}
+
+// Initial Combat HUD render
+updateCombatHud();
+
+// Clear active keys & held actions when clicking or focusing inside coding workspace or sidebar rail
+const codingWorkspaceSection = hasDoc ? document.getElementById('challenge-section') : null;
+if (codingWorkspaceSection) {
+  codingWorkspaceSection.addEventListener('focusin', () => {
+    activeKeys.clear();
+    if (fighterA.isHoldingBlock) releaseFighterAction('A', 'block');
+    if (fighterA.isHoldingDuck) releaseFighterAction('A', 'duck');
+    if (fighterB.isHoldingBlock) releaseFighterAction('B', 'block');
+    if (fighterB.isHoldingDuck) releaseFighterAction('B', 'duck');
+  });
+}
+
+// Collapsible Diagnostics & Telemetry Panel Toggle
+const diagHeader = hasDoc ? document.getElementById('diagnostics-header') : null;
+const diagBody = hasDoc ? document.getElementById('diagnostics-collapsible-body') : null;
+if (diagHeader && diagBody) {
+  diagHeader.addEventListener('click', (e) => {
+    // Avoid collapsing when clicking the "Copy Test Report" button
+    if (e.target && e.target.closest && e.target.closest('#copy-report-btn')) return;
+    const isCollapsed = diagBody.classList.toggle('collapsed');
+    diagHeader.classList.toggle('collapsed', isCollapsed);
+  });
+}
 
 /**
  * Render Arena Background & Floor
@@ -556,24 +927,47 @@ function animate(currentTime) {
   // 1. Update State
   fighterA.update(dt);
   fighterB.update(dt);
+  animBridge.update(dt);
 
   // 2. Clear & Draw Arena (Canvas fixed 640x360, floor at y=190)
+  ctx.save();
+  animBridge.applyCamera(ctx);
   drawArena(ctx, canvas.width, canvas.height);
+  animBridge.drawBackgroundEffects(ctx);
 
   // 3. Draw Fighters
-  // Fighter A at x=200 facing right
-  // Fighter B at x=440 facing left (mirror=true)
-  fighterA.draw(ctx, 200, '#e2e8f0', false);
-  fighterB.draw(ctx, 440, '#cbd5e1', true);
+  if (animBridge.isEnabled()) {
+    animBridge.drawFighters(ctx);
+    animBridge.drawForegroundEffects(ctx, canvas.width, canvas.height);
+  } else {
+    // Standard rendering fallback
+    fighterA.draw(ctx, 200, '#e2e8f0', false);
+    fighterB.draw(ctx, 440, '#cbd5e1', true);
+    fighterA.drawSpecialSlamBanner(ctx, canvas.width, canvas.height);
+    fighterB.drawSpecialSlamBanner(ctx, canvas.width, canvas.height);
+  }
 
-  // 4. Draw Special Slam Banners if active
-  fighterA.drawSpecialSlamBanner(ctx, canvas.width, canvas.height);
-  fighterB.drawSpecialSlamBanner(ctx, canvas.width, canvas.height);
+  animBridge.restoreCamera(ctx);
+  ctx.restore();
 
   requestAnimationFrame(animate);
 }
 
-requestAnimationFrame((time) => {
-  lastTime = time;
-  animate(time);
-});
+if (typeof requestAnimationFrame === 'function' && ctx && canvas) {
+  requestAnimationFrame((time) => {
+    lastTime = time;
+    animate(time);
+  });
+}
+
+export {
+  isLocalOrLanHost,
+  resolveWebSocketUrl,
+  resolveDefaultTransport,
+  parseStartupParams,
+  buildInviteUrl,
+  handleCopyInvite,
+  challengeController,
+  shouldIgnoreGameHotkeys,
+  updateCombatHud,
+};

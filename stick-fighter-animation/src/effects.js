@@ -27,6 +27,7 @@
     for (var i = 0; i < MAX_PARTICLES; i++) {
       this.particles.push(new Particle());
     }
+    this.recycleIndex = 0;
 
     // Screen Shake
     this.shakeTimer = 0;
@@ -73,8 +74,36 @@
         return this.particles[i];
       }
     }
-    // Pool full: steal oldest particle (index 0)
-    return this.particles[0];
+    // Pool saturated: round-robin recycle oldest particles across pool
+    var victim = this.particles[this.recycleIndex];
+    this.recycleIndex = (this.recycleIndex + 1) % this.particles.length;
+    return victim;
+  };
+
+  /**
+   * Reset and clear all active particles, combat effects, timers and screenshake
+   */
+  EffectsManager.prototype.clear = function() {
+    for (var i = 0; i < this.particles.length; i++) {
+      this.particles[i].active = false;
+    }
+    this.recycleIndex = 0;
+    this.slashArcs.length = 0;
+    this.shockwaves.length = 0;
+    this.speedLines.length = 0;
+    this.afterimages.length = 0;
+    this.floatingTexts.length = 0;
+    this.shakeTimer = 0;
+    this.shakeDuration = 0;
+    this.shakeIntensity = 0;
+    this.shakeOffsetX = 0;
+    this.shakeOffsetY = 0;
+    this.flashTimer = 0;
+    this.flashDuration = 0;
+  };
+
+  EffectsManager.prototype.reset = function() {
+    this.clear();
   };
 
   /**
@@ -367,6 +396,29 @@
       ctx.lineTo(slv.x2, slv.y1);
       ctx.stroke();
       ctx.restore();
+    }
+
+    // 1d. Draw Afterimages
+    for (var ai = 0; ai < this.afterimages.length; ai++) {
+      var ghost = this.afterimages[ai];
+      var ghostAlpha = Math.max(0, (ghost.life / ghost.maxLife) * 0.45);
+      if (root.Fighter && root.Fighter.drawStickFigure) {
+        ctx.save();
+        ctx.globalAlpha = ghostAlpha;
+        root.Fighter.drawStickFigure(
+          ctx,
+          ghost.pose,
+          ghost.x,
+          ghost.y || (root.CONFIG ? root.CONFIG.canvas.floorY : 330),
+          ghost.facing,
+          ghost.color,
+          ghost.color,
+          false,
+          2.5,
+          0
+        );
+        ctx.restore();
+      }
     }
 
     // 2. Draw Particles

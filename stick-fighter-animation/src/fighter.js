@@ -41,12 +41,40 @@
   /**
    * Transition to a target pose smoothly
    */
-  Fighter.prototype.transitionTo = function(targetPose, durationMs) {
+  Fighter.prototype.transitionTo = function(targetPose, durationMs, options) {
     this.fromPose = Poses.clonePose(this.currentPose);
     this.targetPose = targetPose || Poses.POSES.idle;
     this.transitionDuration = Math.max(1, durationMs || 140);
     this.transitionElapsed = 0;
     this.isTransitioning = true;
+
+    options = options || {};
+    if (options.shortestArc && Poses && Poses.normalizeAngleDeg) {
+      var targetRot = this.targetPose.rot || 0;
+      var fromRot = this.fromPose.rot || 0;
+      var diff = Poses.normalizeAngleDeg(fromRot - targetRot);
+      this.fromPose.rot = targetRot + diff;
+      this.currentPose.rot = this.fromPose.rot;
+    }
+  };
+
+  /**
+   * Set pose immediately without transition
+   */
+  Fighter.prototype.setPose = function(pose) {
+    this.currentPose = Poses.clonePose(pose || Poses.POSES.idle);
+    this.fromPose = Poses.clonePose(this.currentPose);
+    this.targetPose = this.currentPose;
+    this.isTransitioning = false;
+  };
+
+  /**
+   * Reset fighter cleanly to default idle pose
+   */
+  Fighter.prototype.resetPose = function() {
+    this.setPose(Poses.POSES.idle);
+    this.isIdle = true;
+    this.currentMoveName = 'idle';
   };
 
   Fighter.prototype.update = function(dt) {
@@ -64,24 +92,26 @@
   };
 
   /**
-   * Render stick figure to Canvas
+   * Static renderer for stick figures (usable by Fighter instances and Afterimage effects)
    */
-  Fighter.prototype.draw = function(ctx, floorY, themeInk) {
-    var P = this.currentPose;
-    var ink = themeInk || this.color;
-
-    // Breathing oscillation when idle
-    var breath = (this.isIdle && !this.isTransitioning) ? Math.sin(this.breathTimer * 0.003) * 2.2 : 0;
+  Fighter.drawStickFigure = function(ctx, P, x, floorY, facing, ink, swordColor, showJoints, lineWidth, breath) {
+    P = P || Poses.POSES.idle;
+    breath = breath || 0;
     var hipBreath = breath * 0.35;
+    lineWidth = lineWidth || 3.5;
+    swordColor = swordColor || '#EF9F27';
+    ink = ink || '#f1f5f9';
+    facing = (facing === -1 || facing === 'left') ? -1 : 1;
+    floorY = floorY || 330;
 
     ctx.save();
     // Position at base ground
-    var drawX = this.x + (P.dx || 0) * this.facing;
-    var drawY = (floorY || 330) + (P.dy || 0);
+    var drawX = (x || 0) + (P.dx || 0) * facing;
+    var drawY = floorY + (P.dy || 0);
     ctx.translate(drawX, drawY);
 
     // Apply facing mirror
-    ctx.scale(this.facing, 1);
+    ctx.scale(facing, 1);
 
     // Apply pose rotation (supports > 360 deg)
     if (P.rot) {
@@ -89,7 +119,7 @@
     }
 
     ctx.strokeStyle = ink;
-    ctx.lineWidth = this.lineWidth;
+    ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
@@ -146,8 +176,8 @@
     var tipY = P.swordTip[1] + breath;
 
     ctx.save();
-    ctx.strokeStyle = this.swordColor;
-    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = swordColor;
+    ctx.lineWidth = lineWidth;
     ctx.beginPath();
     ctx.moveTo(handX, handY);
     ctx.lineTo(tipX, tipY);
@@ -170,7 +200,7 @@
     ctx.restore();
 
     // 8. Skeleton Joints (when enabled)
-    if (this.showJoints) {
+    if (showJoints) {
       ctx.save();
       ctx.fillStyle = '#EF9F27';
       var joints = [
@@ -196,6 +226,26 @@
     }
 
     ctx.restore(); // restore local transform
+  };
+
+  /**
+   * Render stick figure to Canvas
+   */
+  Fighter.prototype.draw = function(ctx, floorY, themeInk) {
+    var ink = themeInk || this.color;
+    var breath = (this.isIdle && !this.isTransitioning) ? Math.sin(this.breathTimer * 0.003) * 2.2 : 0;
+    Fighter.drawStickFigure(
+      ctx,
+      this.currentPose,
+      this.x,
+      floorY,
+      this.facing,
+      ink,
+      this.swordColor,
+      this.showJoints,
+      this.lineWidth,
+      breath
+    );
   };
 
   root.Fighter = Fighter;

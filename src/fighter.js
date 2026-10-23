@@ -56,6 +56,10 @@ export class Fighter {
     this.specialSlamDuration = 650; // ms for the banner sequence
     this.specialSlamOnStrikeLand = null;
 
+    // Health and combat HUD state
+    this.maxHp = 100;
+    this.hp = 100;
+
     // Floating combat feedback text
     this.floatingTexts = [];
   }
@@ -190,15 +194,24 @@ export class Fighter {
     let outcome = 'HIT';
     if (this.currentMoveName === 'block' || this.isHoldingBlock) {
       outcome = 'BLOCKED';
+      this.hp = Math.max(0, this.hp - 10);
     } else if (this.currentMoveName === 'duck' || this.isHoldingDuck) {
       outcome = 'DODGED';
     } else {
       outcome = 'HIT';
+      this.hp = Math.max(0, this.hp - 25);
       this.playMove('hurt');
     }
 
     this.addFloatingText(outcome);
     return outcome;
+  }
+
+  /**
+   * Reset health to max HP
+   */
+  resetHp() {
+    this.hp = this.maxHp;
   }
 
   /**

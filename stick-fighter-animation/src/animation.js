@@ -24,6 +24,7 @@
     this.isPlaying = false;
     this.isReturningToIdle = false;
     this.isLooping = false;
+    this.wasStopped = false;
     this.currentOptions = {};
     this.resolvePromise = null;
     this.rejectPromise = null;
@@ -106,12 +107,14 @@
       return Promise.reject(new Error(errMsg));
     }
 
-    // Settle prior playing promise cleanly
-    if (this.isPlaying && this.resolvePromise) {
+    // Settle prior playing promise cleanly and emit interrupted event
+    if ((this.isPlaying || this.isReturningToIdle) && this.resolvePromise) {
       var prior = this.resolvePromise;
+      var priorMove = this.currentMoveName;
       this.resolvePromise = null;
       this.rejectPromise = null;
-      prior({ interrupted: true, move: this.currentMoveName });
+      this.emitEvent('interrupted', { move: priorMove, by: moveName });
+      prior({ interrupted: true, move: priorMove, by: moveName });
     }
 
     this.currentMove = moveDef;
@@ -121,6 +124,7 @@
     this.isLooping = (options.loop !== undefined) ? !!options.loop : !!moveDef.loop;
     this.currentPhaseIndex = -1;
     this.elapsedMs = 0;
+    this.wasStopped = false;
 
     // Clone event list and reset fired state
     this.events = (moveDef.events || []).map(function(e) {
@@ -135,17 +139,17 @@
     return new Promise(function(resolve, reject) {
       self.resolvePromise = resolve;
       self.rejectPromise = reject;
-      self.nextPhase();
+      self.nextPhase(0, { shortestArc: true });
     });
   };
 
-  AnimationController.prototype.nextPhase = function() {
+  AnimationController.prototype.nextPhase = function(overshoot, transitionOpts) {
     this.currentPhaseIndex++;
     if (this.currentPhaseIndex < this.phases.length) {
       var phase = this.phases[this.currentPhaseIndex];
       this.phaseDuration = Math.max(1, phase.durationMs || 140);
-      this.phaseElapsed = 0;
-      this.fighter.transitionTo(phase.pose, this.phaseDuration);
+      this.phaseElapsed = Math.min(overshoot || 0, this.phaseDuration - 1);
+      this.fighter.transitionTo(phase.pose, this.phaseDuration, transitionOpts);
 
       if (phase.event) {
         this.emitEvent(phase.event, { move: this.currentMoveName, phase: this.currentPhaseIndex });
@@ -158,19 +162,32 @@
         for (var i = 0; i < this.events.length; i++) {
           this.events[i].fired = false;
         }
-        this.nextPhase();
+        this.nextPhase(overshoot);
+      } else if (this.currentOptions && (this.currentOptions.returnToIdle === false || this.currentOptions.hold === true)) {
+        // Hold final pose or direct link completion without returning to idle
+        this.isPlaying = false;
+        this.isReturningToIdle = false;
+        this.fighter.isIdle = false;
+        this.emitEvent('completed', { move: this.currentMoveName });
+
+        if (this.resolvePromise) {
+          var res = this.resolvePromise;
+          this.resolvePromise = null;
+          this.rejectPromise = null;
+          res({ completed: true, move: this.currentMoveName });
+        }
       } else {
-        this.returnToIdle();
+        this.returnToIdle(overshoot);
       }
     }
   };
 
-  AnimationController.prototype.returnToIdle = function() {
+  AnimationController.prototype.returnToIdle = function(overshoot) {
     this.isReturningToIdle = true;
     var duration = CONFIG.animation.returnToIdleMs || 180;
     this.phaseDuration = duration;
-    this.phaseElapsed = 0;
-    this.fighter.transitionTo(Poses.POSES.idle, duration);
+    this.phaseElapsed = Math.min(overshoot || 0, this.phaseDuration - 1);
+    this.fighter.transitionTo(Poses.POSES.idle, duration, { shortestArc: true });
   };
 
   AnimationController.prototype.playChain = function(moveNames, options) {
@@ -180,14 +197,22 @@
 
     var self = this;
     var chain = moveNames.slice();
+    options = options || {};
 
     function step() {
       if (chain.length === 0) {
         return Promise.resolve({ completed: true });
       }
       var next = chain.shift();
-      return self.play(next, options).then(function(res) {
-        if (res && res.interrupted) return res;
+      var isLast = (chain.length === 0);
+      var moveOpts = Object.assign({}, options);
+      // Intermediate chain moves transition directly into the next move
+      if (!isLast && moveOpts.returnToIdle === undefined) {
+        moveOpts.returnToIdle = false;
+      }
+
+      return self.play(next, moveOpts).then(function(res) {
+        if (res && (res.interrupted || res.stopped)) return res;
         return step();
       });
     }
@@ -197,9 +222,16 @@
 
   AnimationController.prototype.stop = function() {
     this.isLooping = false;
-    if (this.isPlaying) {
+    if (this.isPlaying || this.isReturningToIdle) {
+      // Cancel all unfired move events so they do not trigger during returnToIdle
+      for (var i = 0; i < this.events.length; i++) {
+        this.events[i].fired = true;
+      }
+      this.wasStopped = true;
+      this.isPlaying = false;
       this.returnToIdle();
       this.emitEvent('stopped', { move: this.currentMoveName });
+
       if (this.resolvePromise) {
         var res = this.resolvePromise;
         this.resolvePromise = null;
@@ -214,36 +246,40 @@
       return;
     }
 
-    var prevTime = this.elapsedMs;
-    this.elapsedMs += dt;
-    var currTime = this.elapsedMs;
-
-    // Dispatch timed keyframe events exactly once
-    for (var e = 0; e < this.events.length; e++) {
-      var evt = this.events[e];
-      if (!evt.fired && prevTime <= evt.timeMs && currTime >= evt.timeMs) {
-        evt.fired = true;
-        this.emitEvent(evt.name, { move: this.currentMoveName, timeMs: evt.timeMs });
+    // Dispatch timed keyframe events exactly once (only if not stopped)
+    if (!this.wasStopped) {
+      for (var e = 0; e < this.events.length; e++) {
+        var evt = this.events[e];
+        if (!evt.fired && (this.elapsedMs + dt >= evt.timeMs)) {
+          evt.fired = true;
+          this.emitEvent(evt.name, { move: this.currentMoveName, timeMs: evt.timeMs });
+        }
       }
     }
 
+    this.elapsedMs += dt;
     this.phaseElapsed += dt;
+
     if (this.phaseElapsed >= this.phaseDuration) {
       if (this.isReturningToIdle) {
         this.isPlaying = false;
         this.isReturningToIdle = false;
         this.fighter.isIdle = true;
         this.fighter.currentMoveName = 'idle';
-        this.emitEvent('completed', { move: this.currentMoveName });
+
+        if (!this.wasStopped) {
+          this.emitEvent('completed', { move: this.currentMoveName });
+        }
 
         if (this.resolvePromise) {
           var res = this.resolvePromise;
           this.resolvePromise = null;
           this.rejectPromise = null;
-          res({ completed: true, move: this.currentMoveName });
+          res({ completed: !this.wasStopped, stopped: this.wasStopped, move: this.currentMoveName });
         }
       } else {
-        this.nextPhase();
+        var overshoot = this.phaseElapsed - this.phaseDuration;
+        this.nextPhase(overshoot);
       }
     }
   };

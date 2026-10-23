@@ -3,81 +3,374 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stick-Fighting Game - Step 1: Canvas, Animation & Loopback Sync</title>
+  <title>Stickman Wars - Hybrid Combat & Python Coding Arena</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app-container">
-    <!-- Header / Top Bar -->
-    <header class="top-bar">
-      <div class="top-bar-section title-section">
-        <h1 class="app-title">STICK FIGHTER <span class="badge-module">MODULE 0</span></h1>
+  <div class="app-root" id="app-root">
+    
+    <!-- 1. FAR-LEFT: Apple-Style Icon Sidebar Rail (Hover-Expanding Flyout) -->
+    <aside class="sidebar-rail" id="sidebar-rail" aria-label="Quick Navigation">
+      <div class="rail-inner" id="rail-inner">
+        <!-- Brand Header in Rail -->
+        <div class="rail-brand">
+          <span class="rail-brand-icon">⚔️</span>
+          <span class="rail-brand-label">STICK WARS</span>
+          <button id="mobile-drawer-toggle" class="mobile-drawer-toggle" aria-label="Toggle Navigation Drawer">✕</button>
+        </div>
+
+        <!-- Navigation Buttons -->
+        <nav class="rail-nav">
+          <button type="button" class="rail-btn active" id="rail-btn-arena" title="Fighting Arena">
+            <span class="rail-icon">🎮</span>
+            <span class="rail-label">Arena</span>
+          </button>
+          <button type="button" class="rail-btn" id="rail-btn-code" title="Python Code Workspace">
+            <span class="rail-icon">🐍</span>
+            <span class="rail-label">Python Editor</span>
+          </button>
+          <button type="button" class="rail-btn" id="rail-btn-briefing" title="Mission Briefing & Instructions">
+            <span class="rail-icon">📖</span>
+            <span class="rail-label">Briefing</span>
+          </button>
+          <button type="button" class="rail-btn" id="rail-btn-telemetry" title="Telemetry & Diagnostics">
+            <span class="rail-icon">📊</span>
+            <span class="rail-label">Telemetry</span>
+          </button>
+          <a href="anim/index.html" class="rail-btn rail-link" target="_blank" title="Animation Lab (New Window)">
+            <span class="rail-icon">🧪</span>
+            <span class="rail-label">Animation Lab ↗</span>
+          </a>
+          <a href="stick-fighter-animation/index.html" class="rail-btn rail-link" target="_blank" title="Stage 2 Studio (New Window)">
+            <span class="rail-icon">🎬</span>
+            <span class="rail-label">Stage 2 Studio ↗</span>
+          </a>
+        </nav>
+
+        <!-- Rail Footer -->
+        <div class="rail-footer">
+          <span class="rail-footer-icon">⚡</span>
+          <span class="rail-footer-label">Module 0 • Hybrid</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Mobile Drawer Backdrop for small screens -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <!-- 2. MAIN VIEWPORT CONTAINER: Permanent Split-Screen (100vh flex row) -->
+    <div class="split-viewport" id="split-viewport">
+      
+      <!-- Responsive Tab Bar (Mobile/Tablet <=900px only; hidden on desktop) -->
+      <div class="viewport-tab-bar" id="viewport-tab-bar" role="tablist" aria-label="Workspace Views">
+        <button type="button" class="tab-btn active" id="tab-btn-code" role="tab" aria-selected="true" aria-controls="challenge-section">
+          <span class="tab-icon">🐍</span>
+          <span class="tab-label">Python Editor</span>
+        </button>
+        <button type="button" class="tab-btn" id="tab-btn-arena" role="tab" aria-selected="false" aria-controls="arena-workspace">
+          <span class="tab-icon">🎮</span>
+          <span class="tab-label">Combat Arena</span>
+        </button>
       </div>
 
-      <div class="top-bar-section controls-section">
-        <!-- Transport Selector Dropdown -->
-        <div class="control-group">
-          <label for="transport-select">Transport</label>
-          <select id="transport-select" class="select-input">
-            <option value="loopback" selected>Loopback (Same Browser)</option>
-          </select>
+      <!-- LEFT WORKSPACE: Coding Workspace (~46% default width) -->
+      <section class="coding-workspace-panel" id="challenge-section" data-state="normal">
+        <!-- Coding Window Title / Header Bar -->
+        <header class="workspace-header">
+          <div class="header-left">
+            <span class="workspace-badge">PYTHON</span>
+            <!-- Custom Game-Native Challenge Selector -->
+            <div class="custom-challenge-picker file-tab" id="custom-challenge-picker">
+              <button type="button" 
+                      class="challenge-picker-trigger" 
+                      id="challenge-picker-trigger" 
+                      aria-haspopup="listbox" 
+                      aria-expanded="false" 
+                      aria-label="Select Python Challenge" 
+                      title="Choose Python challenge (Space/Enter to open, arrow keys to navigate)">
+                <span class="picker-py-icon" aria-hidden="true">🐍</span>
+                <span class="picker-title" id="picker-current-title">Special Slam Charge</span>
+                <span class="picker-diff-badge diff-beginner" id="picker-current-diff">BEG</span>
+                <span class="picker-chevron" id="picker-chevron" aria-hidden="true">▾</span>
+              </button>
+
+              <div class="challenge-picker-dropdown" id="challenge-picker-menu" role="listbox" aria-label="Python Challenges" tabindex="-1">
+                <!-- Grouped challenge options injected dynamically by ChallengeController -->
+              </div>
+
+              <!-- Preserved for headless / automated test compatibility -->
+              <select id="challenge-select" class="challenge-select-hidden" aria-hidden="true" tabindex="-1"></select>
+            </div>
+            <span id="challenge-status-badge" class="badge badge-ready">READY</span>
+          </div>
+
+          <div class="header-center">
+            <span id="challenge-timer" class="workspace-timer">⏱️ 60s</span>
+            <span id="workspace-slam-indicator" class="workspace-slam-chip locked">SLAM LOCKED</span>
+          </div>
+
+          <div class="header-right">
+            <button type="button" id="btn-toggle-sidebar" class="btn-window-icon" title="Toggle Mission Briefing">
+              <span class="icon-text">📖 Brief</span>
+            </button>
+            <button type="button" id="btn-workspace-maximize" class="btn-window-icon" title="Maximize / Restore Coding Width (Alt+M)">
+              <span class="icon-text">⛶</span>
+            </button>
+            <button type="button" id="btn-workspace-minimize" class="btn-window-icon btn-close-game" title="Collapse Coding Panel (Esc)">
+              <span class="icon-text">◀ Collapse</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Coding Workspace Body: Editor Column + Collapsible Briefing Sidebar -->
+        <div class="coding-body-container">
+          <!-- Main Coding Column (Editor Upper + Console Lower) -->
+          <div class="coding-main-column">
+            
+            <!-- Upper Area: Editor Pane -->
+            <div class="editor-pane" id="editor-pane">
+              <div class="editor-header-bar">
+                <div class="editor-meta-info">
+                  <span class="workspace-title">Special Slam Charge</span>
+                </div>
+                <div class="editor-quick-actions">
+                  <button type="button" id="btn-code-starter" class="btn-quick-util" title="Load starter code with syntax bug">Starter Bug</button>
+                  <button type="button" id="btn-code-solution" class="btn-quick-util" title="Load verified solution">Solution</button>
+                  <button type="button" id="btn-code-reset" class="btn-quick-util" title="Reset code and timer">Reset</button>
+                </div>
+              </div>
+
+              <!-- Textarea Editor with Line Numbers & Syntax Backdrop -->
+              <div class="code-editor-wrapper">
+                <div class="editor-line-numbers" id="editor-line-numbers" aria-hidden="true">1<br>2<br>3<br>4<br>5</div>
+                <div class="code-area-container">
+                  <pre class="syntax-highlight-layer" id="syntax-highlight-layer" aria-hidden="true"><code></code></pre>
+                  <textarea id="challenge-code-editor" class="code-editor-textarea" spellcheck="false" autocomplete="off" autocapitalize="off" rows="8"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Draggable Horizontal Divider between Editor and Console -->
+            <div class="console-drag-handle" id="console-drag-handle" role="separator" aria-orientation="horizontal" title="Drag vertically to resize console">
+              <div class="drag-grip"></div>
+            </div>
+
+            <!-- Lower Area: Output & Debugging Console Panel -->
+            <div class="workspace-console-pane" id="workspace-console-pane">
+              <div class="console-header-bar">
+                <div class="console-title">
+                  <span class="terminal-prompt">&gt;_</span>
+                  <span>Console &amp; Test Results</span>
+                </div>
+                <div class="console-actions">
+                  <button type="button" id="btn-submit-code" class="btn btn-console-run" title="Run and validate code in Pyodide Worker (Alt+Enter)">
+                    ⚡ Run &amp; Unleash Slam
+                  </button>
+                  <button type="button" id="btn-retry-challenge" class="btn btn-console-retry" title="Restart countdown and retry">
+                    🔄 Retry Challenge
+                  </button>
+                </div>
+              </div>
+
+              <div class="console-output-area">
+                <div id="challenge-feedback" class="challenge-feedback feedback-idle">
+                  Fix the function and submit to unleash Special Slam.
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Collapsible Briefing Sidebar inside Coding Workspace -->
+          <aside class="workspace-sidebar collapsed" id="workspace-sidebar">
+            <div class="sidebar-header">
+              <h3>Mission Briefing</h3>
+              <button type="button" id="btn-close-sidebar" class="btn-icon-subtle" title="Hide Sidebar">◀</button>
+            </div>
+
+            <div class="sidebar-content">
+              <div class="briefing-card">
+                <h4>Objective</h4>
+                <p>Fix the syntax error in <code>special_attack(power, energy)</code>. When <code>energy &gt;= 10</code>, return double the power (<code>power * 2</code>); otherwise return <code>0</code>.</p>
+              </div>
+
+              <div class="briefing-card">
+                <h4>Signature</h4>
+                <pre class="code-signature"><code>def special_attack(power: int, energy: int) -> int</code></pre>
+              </div>
+
+              <div class="briefing-card">
+                <h4>Validation Test Cases</h4>
+                <ul class="test-cases-list">
+                  <li id="tc-1" class="tc-item">
+                    <div class="tc-desc">
+                      <span class="tc-call">special_attack(8, 12)</span>
+                      <span class="tc-arrow">&rarr;</span>
+                      <span class="tc-exp">16</span>
+                    </div>
+                    <span class="tc-status tc-pending">⏳</span>
+                  </li>
+                  <li id="tc-2" class="tc-item">
+                    <div class="tc-desc">
+                      <span class="tc-call">special_attack(8, 5)</span>
+                      <span class="tc-arrow">&rarr;</span>
+                      <span class="tc-exp">0</span>
+                    </div>
+                    <span class="tc-status tc-pending">⏳</span>
+                  </li>
+                  <li id="tc-3" class="tc-item">
+                    <div class="tc-desc">
+                      <span class="tc-call">special_attack(0, 12)</span>
+                      <span class="tc-arrow">&rarr;</span>
+                      <span class="tc-exp">0</span>
+                    </div>
+                    <span class="tc-status tc-pending">⏳</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div class="briefing-card briefing-tips">
+                <h4>Tips &amp; Hotkeys</h4>
+                <ul>
+                  <li><kbd>Tab</kbd> inserts 4 spaces</li>
+                  <li><kbd>Alt</kbd>+<kbd>Enter</kbd> runs code</li>
+                  <li><kbd>Alt</kbd>+<kbd>C</kbd> toggles coding panel</li>
+                  <li><kbd>Esc</kbd> returns focus to arena</li>
+                </ul>
+              </div>
+            </div>
+          </aside>
         </div>
+      </section>
 
-        <!-- Room Code Input -->
-        <div class="control-group">
-          <label for="room-input">Room</label>
-          <input type="text" id="room-input" class="text-input" value="fight-room-1" spellcheck="false" autocomplete="off" />
-        </div>
+      <!-- 3. INTERACTIVE DRAGGABLE VERTICAL DIVIDER (~8px width) -->
+      <div class="split-divider-col" id="workspace-split-divider" role="separator" aria-orientation="vertical" title="Drag horizontally to resize workspace">
+        <div class="divider-col-line"></div>
+      </div>
 
-        <!-- Connect / Disconnect Button -->
-        <button id="connect-btn" class="btn btn-disconnect">Disconnect</button>
+      <!-- 4. RIGHT WORKSPACE: Fighting Arena (~54% default width) -->
+      <section class="arena-panel" id="arena-workspace">
+        
+        <!-- Arena Header Bar: Transport, Room, Connect, Role Toggle, Status -->
+        <header class="arena-top-bar">
+          <div class="arena-brand">
+            <span class="arena-logo">⚔️</span>
+            <span class="arena-title">STICK FIGHTER</span>
+            <span class="badge-module">MODULE 0</span>
+          </div>
 
-        <!-- Player Role Toggle -->
-        <div class="control-group role-toggle-group">
-          <label>Player Role</label>
-          <div class="segmented-control">
-            <label class="segmented-option">
-              <input type="radio" name="player-role" id="role-a" value="A" checked />
-              <span class="segmented-label">Fighter A (Left)</span>
-            </label>
-            <label class="segmented-option">
-              <input type="radio" name="player-role" id="role-b" value="B" />
-              <span class="segmented-label">Fighter B (Right)</span>
-            </label>
+          <div class="arena-net-controls">
+            <!-- Transport Selector Dropdown -->
+            <div class="control-group">
+              <label for="transport-select">Transport</label>
+              <select id="transport-select" class="select-input">
+                <option value="loopback" selected>Loopback (Same Browser)</option>
+                <option value="websocket">WebSocket Relay (Cross-Device)</option>
+              </select>
+            </div>
+
+            <!-- Room Code Input -->
+            <div class="control-group">
+              <label for="room-input">Room</label>
+              <input type="text" id="room-input" class="text-input" value="fight-room-1" spellcheck="false" autocomplete="off" />
+            </div>
+
+            <!-- Connect / Disconnect Button -->
+            <button type="button" id="connect-btn" class="btn btn-disconnect">Disconnect</button>
+
+            <!-- Shareable Room Invite Link Button -->
+            <div class="control-group invite-group">
+              <label>Multiplayer</label>
+              <div class="invite-btn-row">
+                <button type="button" id="btn-copy-invite" class="btn btn-invite" title="Copy shareable invite link for Player 2 (Fighter B)">🔗 Invite Player</button>
+                <span id="invite-feedback" class="invite-feedback" aria-live="polite"></span>
+              </div>
+            </div>
+
+            <!-- Player Role Toggle -->
+            <div class="control-group role-toggle-group">
+              <label>Role</label>
+              <div class="segmented-control">
+                <label class="segmented-option">
+                  <input type="radio" name="player-role" id="role-a" value="A" checked />
+                  <span class="segmented-label">A (Left)</span>
+                </label>
+                <label class="segmented-option">
+                  <input type="radio" name="player-role" id="role-b" value="B" />
+                  <span class="segmented-label">B (Right)</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Status Badge -->
+            <div class="control-group status-group">
+              <label>Status</label>
+              <span id="status-badge" class="badge badge-connected">CONNECTED</span>
+            </div>
+          </div>
+        </header>
+
+        <!-- Combat HUD: Authoritative Health Bars & Special Slam Charge Status -->
+        <div class="combat-hud" id="combat-hud">
+          <!-- Fighter A Health Card -->
+          <div class="hud-fighter-card hud-fighter-a">
+            <div class="hud-fighter-meta">
+              <span class="hud-fighter-name">FIGHTER A</span>
+              <span id="hud-hp-val-a" class="hud-hp-value">100 / 100</span>
+            </div>
+            <div class="hud-hp-bar-outer">
+              <div id="hud-hp-ghost-a" class="hud-hp-bar-ghost" style="width: 100%;"></div>
+              <div id="hud-hp-fill-a" class="hud-hp-bar-fill" style="width: 100%;"></div>
+            </div>
+          </div>
+
+          <!-- Center Status & Coding Mission Pill -->
+          <div class="hud-center-pill">
+            <div id="hud-slam-status" class="hud-slam-badge hud-slam-locked">
+              <span class="hud-slam-icon">⚡</span>
+              <span class="hud-slam-text">SPECIAL SLAM: LOCKED</span>
+            </div>
+            <div class="hud-meta-row">
+              <span id="hud-timer-badge" class="hud-timer-badge">⏱️ 60s</span>
+              <button type="button" id="btn-toggle-workspace" class="btn-toggle-workspace" title="Focus / Expand Coding Panel [Alt+C]">
+                💻 Coding [Alt+C]
+              </button>
+            </div>
+          </div>
+
+          <!-- Fighter B Health Card -->
+          <div class="hud-fighter-card hud-fighter-b">
+            <div class="hud-fighter-meta">
+              <span id="hud-hp-val-b" class="hud-hp-value">100 / 100</span>
+              <span class="hud-fighter-name">FIGHTER B</span>
+            </div>
+            <div class="hud-hp-bar-outer">
+              <div id="hud-hp-ghost-b" class="hud-hp-bar-ghost" style="width: 100%;"></div>
+              <div id="hud-hp-fill-b" class="hud-hp-bar-fill" style="width: 100%;"></div>
+            </div>
           </div>
         </div>
 
-        <!-- Status Badge -->
-        <div class="control-group status-group">
-          <label>Status</label>
-          <span id="status-badge" class="badge badge-connected">CONNECTED</span>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main Game Area -->
-    <main class="game-layout">
-      <!-- Arena & Controls -->
-      <section class="arena-section">
+        <!-- Centered Fighting Arena Canvas -->
         <div class="canvas-wrapper">
-          <canvas id="game-canvas" width="640" height="360"></canvas>
+          <canvas id="game-canvas" width="640" height="360" tabindex="0"></canvas>
         </div>
 
-        <!-- Action Controls Underneath -->
+        <!-- Action Controls Underneath Canvas -->
         <div class="action-bar">
-          <button id="btn-slash" class="action-btn btn-slash" title="Hotkey: A (Fighter A) / J (Fighter B)">
+          <button type="button" id="btn-slash" class="action-btn btn-slash" title="Hotkey: A (Fighter A) / J (Fighter B)">
             <span class="key-badge">A</span>
             <span class="action-text">Slash</span>
           </button>
-          <button id="btn-block" class="action-btn btn-block" title="Hotkey: S (Fighter A) / K (Fighter B) (Hold to guard)">
+          <button type="button" id="btn-block" class="action-btn btn-block" title="Hotkey: S (Fighter A) / K (Fighter B) (Hold to guard)">
             <span class="key-badge">S</span>
             <span class="action-text">Block</span>
           </button>
-          <button id="btn-duck" class="action-btn btn-duck" title="Hotkey: D (Fighter A) / L (Fighter B) (Hold to crouch)">
+          <button type="button" id="btn-duck" class="action-btn btn-duck" title="Hotkey: D (Fighter A) / L (Fighter B) (Hold to crouch)">
             <span class="key-badge">D</span>
             <span class="action-text">Duck</span>
           </button>
-          <button id="btn-special" class="action-btn btn-special" title="Hotkey: F (Fighter A) / ; (Fighter B)">
+          <button type="button" id="btn-special" class="action-btn btn-special" title="Hotkey: F (Fighter A) / ; (Fighter B)">
             <span class="key-badge">F</span>
             <span class="action-text">Special Slam</span>
           </button>
@@ -101,64 +394,77 @@
             <kbd>;</kbd> Special
           </div>
         </div>
-      </section>
 
-      <!-- Status & Latency Diagnostics Panel -->
-      <section class="diagnostics-panel">
-        <div class="panel-header">
-          <h2>Diagnostics & Network Telemetry</h2>
-          <div class="report-btn-wrapper">
-            <button id="copy-report-btn" class="btn btn-secondary">Copy Test Report</button>
-            <span id="copy-feedback" class="copy-feedback"></span>
-          </div>
-        </div>
-
-        <div class="diagnostics-grid">
-          <!-- Connection Metadata -->
-          <div class="diag-card">
-            <div class="card-label">Active Transport</div>
-            <div id="status-transport" class="card-value">Loopback (Same Browser)</div>
-            <div class="card-sub">Room: <strong id="status-room">fight-room-1</strong></div>
-          </div>
-
-          <!-- Latency Metrics -->
-          <div class="diag-card">
-            <div class="card-label">Latest RTT</div>
-            <div id="stat-rtt-latest" class="card-value value-metric">--</div>
-            <div class="card-sub">Min: <span id="stat-rtt-min">--</span> | Max: <span id="stat-rtt-max">--</span></div>
-          </div>
-
-          <div class="diag-card">
-            <div class="card-label">Avg RTT / Jitter</div>
-            <div class="card-value value-metric">
-              <span id="stat-rtt-avg">--</span>
+        <!-- Collapsible Diagnostics & Network Telemetry Panel -->
+        <section class="diagnostics-panel" id="diagnostics-panel">
+          <div class="panel-header collapsed" id="diagnostics-header">
+            <div class="panel-title-group">
+              <span class="panel-collapse-icon" id="diag-collapse-icon">▼</span>
+              <h2>Diagnostics &amp; Network Telemetry</h2>
             </div>
-            <div class="card-sub">Jitter: <span id="stat-rtt-jitter">--</span></div>
-          </div>
-
-          <!-- Traffic Counters -->
-          <div class="diag-card">
-            <div class="card-label">Messages (Sent / Recv)</div>
-            <div class="card-value">
-              <span id="stat-msg-sent" class="counter-sent">0</span>
-              <span class="counter-divider">/</span>
-              <span id="stat-msg-recv" class="counter-recv">0</span>
+            <div class="report-btn-wrapper">
+              <button type="button" id="copy-report-btn" class="btn btn-secondary">Copy Test Report</button>
+              <span id="copy-feedback" class="copy-feedback"></span>
             </div>
-            <div class="card-sub">Periodic ping every 2.0s</div>
           </div>
-        </div>
 
-        <!-- Scrolling Event Log -->
-        <div class="log-section">
-          <div class="log-header">
-            <h3>Event Log</h3>
-            <span class="log-sub">Live packet and combat resolution feed</span>
+          <div class="diagnostics-collapsible-body collapsed" id="diagnostics-collapsible-body">
+            <div class="diagnostics-grid">
+              <!-- Connection Metadata -->
+              <div class="diag-card">
+                <div class="card-label">Active Transport</div>
+                <div id="status-transport" class="card-value">Loopback (Same Browser)</div>
+                <div class="card-sub">Room: <strong id="status-room">fight-room-1</strong></div>
+              </div>
+
+              <!-- Latency Metrics -->
+              <div class="diag-card">
+                <div class="card-label">Latest RTT</div>
+                <div id="stat-rtt-latest" class="card-value value-metric">--</div>
+                <div class="card-sub">Min: <span id="stat-rtt-min">--</span> | Max: <span id="stat-rtt-max">--</span></div>
+              </div>
+
+              <div class="diag-card">
+                <div class="card-label">Avg RTT / Jitter</div>
+                <div class="card-value value-metric">
+                  <span id="stat-rtt-avg">--</span>
+                </div>
+                <div class="card-sub">Jitter: <span id="stat-rtt-jitter">--</span></div>
+              </div>
+
+              <!-- Traffic Counters -->
+              <div class="diag-card">
+                <div class="card-label">Messages (Sent / Recv)</div>
+                <div class="card-value">
+                  <span id="stat-msg-sent" class="counter-sent">0</span>
+                  <span class="counter-divider">/</span>
+                  <span id="stat-msg-recv" class="counter-recv">0</span>
+                </div>
+                <div class="card-sub">Periodic ping every 2.0s</div>
+              </div>
+            </div>
+
+            <!-- Scrolling Event Log -->
+            <div class="log-section">
+              <div class="log-header">
+                <h3>Event Log</h3>
+                <span class="log-sub">Live packet and combat resolution feed</span>
+              </div>
+              <div id="event-log" class="event-log-container"></div>
+            </div>
           </div>
-          <div id="event-log" class="event-log-container"></div>
-        </div>
+        </section>
+
       </section>
-    </main>
+    </div>
   </div>
+
+  <!-- Code Fighters Animation Engine (Classic Scripts) -->
+  <script src="anim/rig.js"></script>
+  <script src="anim/poses.js"></script>
+  <script src="anim/effects.js"></script>
+  <script src="anim/moves.js"></script>
+  <script src="anim/fighter.js"></script>
 
   <!-- Entry Script (ES Module) -->
   <script type="module" src="src/main.js"></script>

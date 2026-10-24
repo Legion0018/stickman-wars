@@ -1,8 +1,8 @@
 /**
  * src/question-registry.js
- * 
+ *
  * Local Question Loader and Registry for Python Combat Challenges.
- * 
+ *
  * Key Responsibilities:
  * 1. Strict schema validation for question definitions.
  * 2. Safe challenge lookup by ID with deep cloning (preventing mutation leaks).
@@ -14,8 +14,23 @@
 import { CHALLENGES } from './challenges-data.js';
 
 export const ALLOWED_TOPICS = ['variables', 'conditionals', 'loops', 'functions', 'lists', 'debugging'];
-export const ALLOWED_DIFFICULTIES = ['beginner', 'intermediate', 'advanced'];
+export const ALLOWED_DIFFICULTIES = ['beginner', 'basic', 'intermediate', 'advanced', 'hard'];
 export const ALLOWED_ACTIONS = ['special', 'slash', 'block', 'duck'];
+
+/**
+ * Normalizes difficulty aliases to standard 3-tier canonical names:
+ * 'basic' | 'intermediate' | 'hard'
+ * @param {string} diff
+ * @returns {'basic'|'intermediate'|'hard'}
+ */
+export function normalizeTier(diff) {
+  if (!diff || typeof diff !== 'string') return 'basic';
+  const d = diff.toLowerCase().trim();
+  if (d === 'beginner' || d === 'basic') return 'basic';
+  if (d === 'intermediate') return 'intermediate';
+  if (d === 'advanced' || d === 'hard') return 'hard';
+  return 'basic';
+}
 
 export class QuestionRegistry {
   /**
@@ -23,6 +38,7 @@ export class QuestionRegistry {
    */
   constructor(initialChallenges = CHALLENGES) {
     this._challenges = new Map();
+    this._solved = new Set();
     this.registerAll(initialChallenges);
   }
 
@@ -183,23 +199,142 @@ export class QuestionRegistry {
    * @param {object} [filter]
    * @param {string} [filter.topic]
    * @param {string} [filter.difficulty]
+   * @param {string} [filter.tier] - 'basic' | 'intermediate' | 'hard'
    * @param {string} [filter.unlockAction]
+   * @param {string} [filter.query] - Search keyword matching title, topic, or instructions
    * @returns {Array<object>}
    */
   list(filter = {}) {
     let result = Array.from(this._challenges.values());
 
-    if (filter.topic) {
+    if (filter.tier && filter.tier !== 'all') {
+      const targetTier = normalizeTier(filter.tier);
+      result = result.filter((c) => normalizeTier(c.difficulty) === targetTier);
+    }
+    if (filter.topic && filter.topic !== 'all') {
       result = result.filter((c) => c.topic === filter.topic);
     }
     if (filter.difficulty) {
-      result = result.filter((c) => c.difficulty === filter.difficulty);
+      result = result.filter((c) => c.difficulty === filter.difficulty || normalizeTier(c.difficulty) === normalizeTier(filter.difficulty));
     }
     if (filter.unlockAction) {
       result = result.filter((c) => c.unlockAction === filter.unlockAction);
     }
+    if (filter.query && typeof filter.query === 'string' && filter.query.trim()) {
+      const q = filter.query.toLowerCase().trim();
+      result = result.filter((c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.topic.toLowerCase().includes(q) ||
+        c.instructions.toLowerCase().includes(q) ||
+        c.id.toLowerCase().includes(q)
+      );
+    }
 
     return JSON.parse(JSON.stringify(result));
+  }
+
+  /**
+   * Return challenges belonging to a specific tier
+   * @param {'basic'|'intermediate'|'hard'} tier
+   * @returns {Array<object>}
+   */
+  getByTier(tier) {
+    return this.list({ tier });
+  }
+
+  /**
+   * Return challenges belonging to a specific topic
+   * @param {string} topic
+   * @returns {Array<object>}
+   */
+  getByTopic(topic) {
+    return this.list({ topic });
+  }
+
+  /**
+   * Return challenges unlocking a specific combat action
+   * @param {string} action
+   * @returns {Array<object>}
+   */
+  getByAction(action) {
+    return this.list({ unlockAction: action });
+  }
+
+  /**
+   * Search challenges by query string and optional filters
+   * @param {string} query
+   * @param {object} [filter={}]
+   * @returns {Array<object>}
+   */
+  search(query, filter = {}) {
+    return this.list({ ...filter, query });
+  }
+
+  /**
+   * Retrieve counts of challenges by tier
+   * @returns {{ basic: number, intermediate: number, hard: number, total: number }}
+   */
+  getTierCounts() {
+    let basic = 0;
+    let intermediate = 0;
+    let hard = 0;
+    for (const c of this._challenges.values()) {
+      const t = normalizeTier(c.difficulty);
+      if (t === 'basic') basic++;
+      else if (t === 'intermediate') intermediate++;
+      else if (t === 'hard') hard++;
+    }
+    return { basic, intermediate, hard, total: this._challenges.size };
+  }
+
+  /**
+   * Retrieve next challenge in the same tier
+   * @param {string} currentId
+   * @param {string} [tier] - If omitted, uses tier of currentId
+   * @returns {object|null}
+   */
+  getNextInTier(currentId, tier = null) {
+    const cur = this.get(currentId);
+    const targetTier = tier || (cur ? normalizeTier(cur.difficulty) : 'basic');
+    const tierList = this.getByTier(targetTier);
+    if (!tierList.length) return this.getNext(currentId);
+    const idx = tierList.findIndex((c) => c.id === currentId);
+    if (idx === -1 || idx === tierList.length - 1) {
+      return tierList[0];
+    }
+    return tierList[idx + 1];
+  }
+
+  /**
+   * Mark a challenge as solved
+   * @param {string} id
+   */
+  markSolved(id) {
+    if (id) this._solved.add(id);
+  }
+
+  /**
+   * Check if a challenge has been solved
+   * @param {string} id
+   * @returns {boolean}
+   */
+  isSolved(id) {
+    return this._solved.has(id);
+  }
+
+  /**
+   * Return all solved challenge IDs
+   * @returns {string[]}
+   */
+  getSolvedList() {
+    return Array.from(this._solved);
+  }
+
+  /**
+   * Clear all solved challenge records
+   */
+  clearSolved() {
+    this._solved.clear();
   }
 
   /**

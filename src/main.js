@@ -750,6 +750,35 @@ const challengeController = new ChallengeController({
     triggerFighterAction(localRole, action || 'special', false);
     statusPanel.log(`[Python] Code verified! Special Slam unleashed for Fighter ${localRole}`, 'combat');
   },
+  onPenalty: ({ type, challengeId, penalty }) => {
+    const localFighter = localRole === 'A' ? fighterA : fighterB;
+    const opponentFighter = localRole === 'A' ? fighterB : fighterA;
+    if (penalty && penalty.hp && penalty.hp > 0) {
+      // Mild non-lethal chip penalty, bounded to minimum 1 HP
+      const damage = Math.min(penalty.hp, Math.max(0, localFighter.hp - 1));
+      if (damage > 0) {
+        localFighter.hp = Math.max(1, localFighter.hp - damage);
+        updateCombatHud();
+        statusPanel.log(`[Python] ${type === 'skip' ? 'Challenge skipped' : 'Challenge timed out'}! Fighter ${localRole} sustained -${damage} HP chip penalty`, 'combat');
+        if (isConnected && transport) {
+          try {
+            transport.send({
+              t: 'sync_hp',
+              v: 1,
+              sender: localRole,
+              targetId: localFighter.id,
+              attackerId: opponentFighter.id,
+              outcome: type === 'skip' ? 'skip_penalty' : 'timeout_penalty',
+              hpA: fighterA.hp,
+              hpB: fighterB.hp,
+              ts: performance.now(),
+            });
+            statusPanel.incrementSent();
+          } catch (_) {}
+        }
+      }
+    }
+  },
 });
 
 if (typeof window !== 'undefined') {

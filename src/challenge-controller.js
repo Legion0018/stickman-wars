@@ -1,9 +1,9 @@
 /**
  * src/challenge-controller.js
- * 
+ *
  * Manages the Python Combat Challenge Permanent Split-Screen Workspace, Editor UX,
  * Question Selection, Draggable Dividers, Apple-Style Rail, and Host Combat Integration.
- * 
+ *
  * Key Responsibilities:
  * 1. Question Registry integration: dynamic selection of challenges across topics & difficulties.
  * 2. Permanent Split-Screen layout with default 46% coding / 54% arena widths.
@@ -18,7 +18,7 @@
  */
 
 import { PythonSpecialAttackRunner } from '../python-poc/runner.js';
-import { questionRegistry } from './question-registry.js';
+import { questionRegistry, normalizeTier } from './question-registry.js';
 
 export const STARTER_CODE = `def special_attack(power, energy):
     if energy >= 10
@@ -31,8 +31,21 @@ export const CORRECT_CODE = `def special_attack(power, energy):
     return 0`;
 
 /**
+ * Challenge lifecycle state machine enumeration
+ */
+export const CHALLENGE_STATE = {
+  IDLE: 'idle',
+  RUNNING: 'running',
+  EXECUTING: 'executing',
+  SOLVED: 'solved',
+  TRANSITIONING: 'transitioning',
+  SKIPPED: 'skipped',
+  TIMED_OUT: 'timed_out',
+};
+
+/**
  * Lightweight, zero-dependency Python syntax highlighter for the preview layer
- * @param {string} code 
+ * @param {string} code
  * @returns {string} escaped HTML with syntax token spans
  */
 export function highlightPython(code) {
@@ -95,6 +108,20 @@ export class ChallengeController {
     this.onUnlockCallback = options.onUnlock || null;
     this.splitRatio = 46; // Default: 46% coding / 54% arena
 
+    // Phase 1: State machine, penalties, and auto-advance configuration
+    this.state = CHALLENGE_STATE.IDLE;
+    this.skipPenalty = options.skipPenalty !== undefined ? options.skipPenalty : { hp: 5 };
+    this.timeoutPenalty = options.timeoutPenalty !== undefined ? options.timeoutPenalty : { hp: 0 };
+    this.onPenaltyCallback = options.onPenalty || null;
+    this.autoAdvanceOnSolve = options.autoAdvanceOnSolve !== undefined ? options.autoAdvanceOnSolve : true;
+    this.solveAdvanceDelayMs = options.solveAdvanceDelayMs !== undefined ? options.solveAdvanceDelayMs : 1500;
+    this._advanceTimeoutId = null;
+    this._penaltyApplied = false;
+    this._rewardGranted = false;
+    this.activeTier = options.activeTier || 'all';
+    this.searchQuery = '';
+    this.solvedChallenges = new Set();
+
     // Resolve initial challenge
     const initialChallenge = options.challenge ||
       questionRegistry.get(options.challengeId || 'special-slam-1') ||
@@ -124,6 +151,7 @@ export class ChallengeController {
       editor: hasDoc ? document.getElementById('challenge-code-editor') : null,
       submitBtn: hasDoc ? document.getElementById('btn-submit-code') : null,
       retryBtn: hasDoc ? document.getElementById('btn-retry-challenge') : null,
+      btnSkip: hasDoc ? document.getElementById('btn-code-skip') : null,
       feedback: hasDoc ? document.getElementById('challenge-feedback') : null,
       timer: hasDoc ? document.getElementById('challenge-timer') : null,
       badge: hasDoc ? document.getElementById('challenge-status-badge') : null,
@@ -179,6 +207,8 @@ export class ChallengeController {
       pickerTitle: hasDoc ? document.getElementById('picker-current-title') : null,
       pickerDiff: hasDoc ? document.getElementById('picker-current-diff') : null,
       pickerChevron: hasDoc ? document.getElementById('picker-chevron') : null,
+      pickerOptionsContainer: null,
+      pickerSearchInput: null,
     };
 
     this.pickerOpen = false;
@@ -210,7 +240,8 @@ export class ChallengeController {
       for (const c of challenges) {
         const opt = document.createElement('option');
         opt.value = c.id;
-        const diffTag = c.difficulty.toUpperCase();
+        const normTier = normalizeTier(c.difficulty);
+        const diffTag = normTier.toUpperCase();
         opt.textContent = `[${diffTag}] ${c.title}`;
         if (this.currentChallenge && this.currentChallenge.id === c.id) {
           opt.selected = true;
@@ -219,88 +250,196 @@ export class ChallengeController {
       }
     }
 
-    // 2. Custom game-native listbox menu with category grouping
+    // 2. Custom game-native listbox menu with category grouping, tier tabs, and search
     if (this.dom.pickerMenu) {
       this.dom.pickerMenu.innerHTML = '';
-      this.pickerOptionElements = [];
+      const counts = questionRegistry.getTierCounts();
 
-      const TOPIC_CONFIG = {
-        conditionals: { label: 'Conditionals & Branching', icon: '🔀' },
-        variables: { label: 'Variables & Kinetics', icon: '💡' },
-        loops: { label: 'Loops & Accumulators', icon: '🔁' },
-        functions: { label: 'Functions & Logic', icon: '⚙️' },
-        lists: { label: 'Lists & Inventories', icon: '📦' },
-        debugging: { label: 'Syntax & Bug Fixes', icon: '🐛' },
-      };
+      // Header controls: Search & Tier filter tabs
+      const headerControls = document.createElement('div');
+      headerControls.className = 'picker-header-controls';
+      headerControls.innerHTML = `
+        <div class="picker-search-box">
+          <span class="picker-search-icon" aria-hidden="true">🔍</span>
+          <input type="text"
+                 id="picker-search-input"
+                 class="picker-search-input"
+                 placeholder="Search challenges..."
+                 value="${this.searchQuery || ''}"
+                 aria-label="Filter challenges by title, topic, or id"
+                 autocomplete="off"
+                 spellcheck="false" />
+        </div>
+        <div class="picker-tier-tabs" role="tablist" aria-label="Filter by tier">
+          <button type="button" class="tier-tab-btn ${this.activeTier === 'all' ? 'active' : ''}" data-tier="all">All (${counts.total})</button>
+          <button type="button" class="tier-tab-btn ${this.activeTier === 'basic' ? 'active' : ''}" data-tier="basic">Basic (${counts.basic})</button>
+          <button type="button" class="tier-tab-btn ${this.activeTier === 'intermediate' ? 'active' : ''}" data-tier="intermediate">Inter (${counts.intermediate})</button>
+          <button type="button" class="tier-tab-btn ${this.activeTier === 'hard' ? 'active' : ''}" data-tier="hard">Hard (${counts.hard})</button>
+        </div>
+      `;
 
-      const ACTION_ICONS = {
-        special: '⚡',
-        slash: '🗡️',
-        block: '🛡️',
-        duck: '💨',
-      };
+      this.dom.pickerMenu.appendChild(headerControls);
 
-      const topicOrder = ['conditionals', 'variables', 'loops', 'functions', 'lists', 'debugging'];
-
-      for (const topic of topicOrder) {
-        const groupChallenges = challenges.filter((c) => c.topic === topic);
-        if (!groupChallenges.length) continue;
-
-        const topicMeta = TOPIC_CONFIG[topic] || { label: topic.toUpperCase(), icon: '⚔️' };
-
-        const groupEl = document.createElement('div');
-        groupEl.className = 'picker-group';
-        groupEl.setAttribute('role', 'group');
-        groupEl.setAttribute('aria-label', topicMeta.label);
-
-        const headerEl = document.createElement('div');
-        headerEl.className = 'picker-group-header';
-        headerEl.innerHTML = `
-          <span class="picker-group-icon" aria-hidden="true">${topicMeta.icon}</span>
-          <span class="picker-group-title">${topicMeta.label}</span>
-        `;
-        groupEl.appendChild(headerEl);
-
-        for (const c of groupChallenges) {
-          const isSelected = Boolean(this.currentChallenge && this.currentChallenge.id === c.id);
-          const optEl = document.createElement('div');
-          optEl.className = 'picker-option' + (isSelected ? ' selected' : '');
-          optEl.id = `picker-opt-${c.id}`;
-          optEl.setAttribute('role', 'option');
-          optEl.setAttribute('data-id', c.id);
-          optEl.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-          optEl.setAttribute('tabindex', '-1');
-
-          const actionIcon = ACTION_ICONS[c.unlockAction] || '⚔️';
-          const diffShort = c.difficulty.slice(0, 3).toUpperCase();
-
-          optEl.innerHTML = `
-            <div class="picker-opt-main">
-              <span class="picker-opt-action" title="Unlocks ${c.unlockAction}">${actionIcon}</span>
-              <span class="picker-opt-title">${c.title}</span>
-            </div>
-            <div class="picker-opt-meta">
-              <span class="picker-action-tag">${c.unlockAction}</span>
-              <span class="picker-diff-badge diff-${c.difficulty}">${diffShort}</span>
-              <span class="picker-check" aria-hidden="true">${isSelected ? '✓' : ''}</span>
-            </div>
-          `;
-
-          optEl.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.loadChallenge(c.id);
+      const searchInput = headerControls.querySelector('#picker-search-input');
+      this.dom.pickerSearchInput = searchInput;
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          this.searchQuery = (e.target.value || '').trim().toLowerCase();
+          this.renderPickerOptions();
+        });
+        searchInput.addEventListener('click', (e) => e.stopPropagation());
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (this.pickerOptionElements.length > 0) {
+              this.highlightOptionByIndex(0);
+              if (typeof this.pickerOptionElements[0].focus === 'function') {
+                this.pickerOptionElements[0].focus();
+              }
+            }
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
             this.closePicker();
             if (this.dom.pickerTrigger && typeof this.dom.pickerTrigger.focus === 'function') {
               this.dom.pickerTrigger.focus();
             }
-          });
-
-          groupEl.appendChild(optEl);
-          this.pickerOptionElements.push(optEl);
-        }
-
-        this.dom.pickerMenu.appendChild(groupEl);
+          }
+        });
       }
+
+      const tierButtons = headerControls.querySelectorAll('.tier-tab-btn');
+      tierButtons.forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const tier = btn.getAttribute('data-tier') || 'all';
+          this.activeTier = tier;
+          tierButtons.forEach((b) => b.classList.toggle('active', b === btn));
+          this.renderPickerOptions();
+        });
+      });
+
+      const optionsContainer = document.createElement('div');
+      optionsContainer.className = 'picker-options-list';
+      optionsContainer.id = 'picker-options-list';
+      this.dom.pickerOptionsContainer = optionsContainer;
+      this.dom.pickerMenu.appendChild(optionsContainer);
+
+      this.renderPickerOptions();
+    }
+  }
+
+  /**
+   * Render challenge items inside the custom picker based on activeTier and searchQuery
+   */
+  renderPickerOptions() {
+    if (!this.dom.pickerOptionsContainer) return;
+    const container = this.dom.pickerOptionsContainer;
+    container.innerHTML = '';
+    this.pickerOptionElements = [];
+
+    let challenges = this.activeTier === 'all'
+      ? questionRegistry.getAll()
+      : questionRegistry.getByTier(this.activeTier);
+
+    if (this.searchQuery) {
+      const q = this.searchQuery;
+      challenges = challenges.filter((c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.topic.toLowerCase().includes(q) ||
+        c.id.toLowerCase().includes(q) ||
+        c.unlockAction.toLowerCase().includes(q) ||
+        (c.instructions && c.instructions.toLowerCase().includes(q))
+      );
+    }
+
+    if (challenges.length === 0) {
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'picker-empty-message';
+      emptyEl.textContent = 'No challenges match your filter.';
+      container.appendChild(emptyEl);
+      return;
+    }
+
+    const TOPIC_CONFIG = {
+      conditionals: { label: 'Conditionals & Branching', icon: '🔀' },
+      variables: { label: 'Variables & Kinetics', icon: '💡' },
+      loops: { label: 'Loops & Accumulators', icon: '🔁' },
+      functions: { label: 'Functions & Logic', icon: '⚙️' },
+      lists: { label: 'Lists & Inventories', icon: '📦' },
+      debugging: { label: 'Syntax & Bug Fixes', icon: '🐛' },
+    };
+
+    const ACTION_ICONS = {
+      special: '⚡',
+      slash: '🗡️',
+      block: '🛡️',
+      duck: '💨',
+    };
+
+    const topicOrder = ['conditionals', 'variables', 'loops', 'functions', 'lists', 'debugging'];
+
+    for (const topic of topicOrder) {
+      const groupChallenges = challenges.filter((c) => c.topic === topic);
+      if (!groupChallenges.length) continue;
+
+      const topicMeta = TOPIC_CONFIG[topic] || { label: topic.toUpperCase(), icon: '⚔️' };
+
+      const groupEl = document.createElement('div');
+      groupEl.className = 'picker-group';
+      groupEl.setAttribute('role', 'group');
+      groupEl.setAttribute('aria-label', topicMeta.label);
+
+      const headerEl = document.createElement('div');
+      headerEl.className = 'picker-group-header';
+      headerEl.innerHTML = `
+        <span class="picker-group-icon" aria-hidden="true">${topicMeta.icon}</span>
+        <span class="picker-group-title">${topicMeta.label}</span>
+      `;
+      groupEl.appendChild(headerEl);
+
+      for (const c of groupChallenges) {
+        const isSelected = Boolean(this.currentChallenge && this.currentChallenge.id === c.id);
+        const isSolved = this.solvedChallenges.has(c.id) || questionRegistry.isSolved(c.id);
+
+        const optEl = document.createElement('div');
+        optEl.className = 'picker-option' + (isSelected ? ' selected' : '') + (isSolved ? ' solved' : '');
+        optEl.id = `picker-opt-${c.id}`;
+        optEl.setAttribute('role', 'option');
+        optEl.setAttribute('data-id', c.id);
+        optEl.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        optEl.setAttribute('tabindex', '-1');
+
+        const actionIcon = ACTION_ICONS[c.unlockAction] || '⚔️';
+        const normTier = normalizeTier(c.difficulty);
+        const diffShort = normTier === 'basic' ? 'BAS' : normTier === 'intermediate' ? 'INT' : 'HRD';
+
+        optEl.innerHTML = `
+          <div class="picker-opt-main">
+            <span class="picker-opt-action" title="Unlocks ${c.unlockAction}">${actionIcon}</span>
+            <span class="picker-opt-title">${c.title}</span>
+            ${isSolved ? '<span class="picker-solved-tag" title="Completed">✓ DONE</span>' : ''}
+          </div>
+          <div class="picker-opt-meta">
+            <span class="picker-action-tag">${c.unlockAction}</span>
+            <span class="picker-diff-badge diff-${normTier}">${diffShort}</span>
+            <span class="picker-check" aria-hidden="true">${isSelected ? '✓' : ''}</span>
+          </div>
+        `;
+
+        optEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.loadChallenge(c.id);
+          this.closePicker();
+          if (this.dom.pickerTrigger && typeof this.dom.pickerTrigger.focus === 'function') {
+            this.dom.pickerTrigger.focus();
+          }
+        });
+
+        groupEl.appendChild(optEl);
+        this.pickerOptionElements.push(optEl);
+      }
+
+      container.appendChild(groupEl);
     }
   }
 
@@ -313,6 +452,9 @@ export class ChallengeController {
     }
     if (this.dom.retryBtn) {
       this.dom.retryBtn.addEventListener('click', () => this.resetChallenge());
+    }
+    if (this.dom.btnSkip) {
+      this.dom.btnSkip.addEventListener('click', () => this.skipChallenge());
     }
     if (this.dom.btnStarter) {
       this.dom.btnStarter.addEventListener('click', () => {
@@ -367,6 +509,11 @@ export class ChallengeController {
    * @returns {boolean} true if loaded successfully
    */
   loadChallenge(challengeOrId) {
+    if (this._advanceTimeoutId) {
+      clearTimeout(this._advanceTimeoutId);
+      this._advanceTimeoutId = null;
+    }
+
     let challenge = null;
     if (typeof challengeOrId === 'string') {
       challenge = questionRegistry.get(challengeOrId);
@@ -397,12 +544,14 @@ export class ChallengeController {
   updateChallengeUI() {
     if (!this.currentChallenge) return;
     const c = this.currentChallenge;
+    const normTier = normalizeTier(c.difficulty);
+    const diffTag = normTier.toUpperCase();
 
     if (this.dom.title) {
       this.dom.title.textContent = c.title;
     }
     if (this.dom.badge) {
-      this.dom.badge.textContent = `${c.topic.toUpperCase()} • ${c.difficulty.toUpperCase()}`;
+      this.dom.badge.textContent = `${c.topic.toUpperCase()} • ${diffTag}`;
     }
     if (this.dom.instructions) {
       this.dom.instructions.textContent = c.instructions;
@@ -419,8 +568,9 @@ export class ChallengeController {
       this.dom.pickerTitle.textContent = c.title;
     }
     if (this.dom.pickerDiff) {
-      this.dom.pickerDiff.textContent = c.difficulty.slice(0, 3).toUpperCase();
-      this.dom.pickerDiff.className = `picker-diff-badge diff-${c.difficulty}`;
+      const diffShort = normTier === 'basic' ? 'BAS' : normTier === 'intermediate' ? 'INT' : 'HRD';
+      this.dom.pickerDiff.textContent = diffShort;
+      this.dom.pickerDiff.className = `picker-diff-badge diff-${normTier}`;
     }
     if (this.pickerOptionElements && this.pickerOptionElements.length) {
       for (const el of this.pickerOptionElements) {
@@ -1046,7 +1196,7 @@ export class ChallengeController {
 
   /**
    * Set editor code value
-   * @param {string} code 
+   * @param {string} code
    */
   setCode(code) {
     this.code = code;
@@ -1082,11 +1232,18 @@ export class ChallengeController {
    * Reset challenge to initial state with starter code and fresh countdown
    */
   resetChallenge() {
+    if (this._advanceTimeoutId) {
+      clearTimeout(this._advanceTimeoutId);
+      this._advanceTimeoutId = null;
+    }
     this.stopCountdown();
     this.timeRemaining = this.countdownSec;
     this.isExpired = false;
     this.isUnlocked = false;
     this.isExecuting = false;
+    this._penaltyApplied = false;
+    this._rewardGranted = false;
+    this.state = CHALLENGE_STATE.RUNNING;
 
     const initialCode = this.currentChallenge ? this.currentChallenge.starterCode : STARTER_CODE;
     this.setCode(initialCode);
@@ -1158,7 +1315,7 @@ export class ChallengeController {
 
   /**
    * Synchronize Special Slam locked/unlocked state with Combat HUD & Workspace
-   * @param {boolean} isUnlocked 
+   * @param {boolean} isUnlocked
    */
   setSlamUnlockedState(isUnlocked) {
     this.isUnlocked = isUnlocked;
@@ -1188,9 +1345,85 @@ export class ChallengeController {
    * Handle countdown expiration
    */
   onTimerExpired() {
+    if (this.state === CHALLENGE_STATE.SOLVED || this.state === CHALLENGE_STATE.TRANSITIONING) {
+      return;
+    }
+    this.state = CHALLENGE_STATE.TIMED_OUT;
+    this.isExpired = true;
     if (this.dom.submitBtn) this.dom.submitBtn.disabled = true;
     if (this.dom.editor) this.dom.editor.disabled = true;
-    this.setFeedback('⏱️ Time expired! Special attack failed to charge in time. Click "Retry Challenge" to try again.', 'error');
+
+    // Apply single-use timeout penalty if configured
+    if (!this._penaltyApplied) {
+      this._penaltyApplied = true;
+      if (typeof this.onPenaltyCallback === 'function' && this.timeoutPenalty && (this.timeoutPenalty.hp > 0 || this.timeoutPenalty.stamina > 0)) {
+        this.onPenaltyCallback({
+          type: 'timeout',
+          challengeId: this.currentChallenge ? this.currentChallenge.id : null,
+          penalty: this.timeoutPenalty,
+        });
+      }
+    }
+
+    this.setFeedback('⏱️ Time expired! Special attack failed to charge in time. Click "Retry Challenge" to try again or "Skip" to move forward.', 'error');
+  }
+
+  /**
+   * Skip current challenge, apply mild non-lethal penalty (once), and advance to next challenge
+   * @param {object} [options]
+   * @returns {boolean} true if skipped
+   */
+  skipChallenge(options = {}) {
+    if (this.state === CHALLENGE_STATE.EXECUTING || this.state === CHALLENGE_STATE.TRANSITIONING || this.isExecuting) {
+      return false;
+    }
+
+    if (this._advanceTimeoutId) {
+      clearTimeout(this._advanceTimeoutId);
+      this._advanceTimeoutId = null;
+    }
+
+    this.stopCountdown();
+
+    // Apply skip penalty once per challenge attempt
+    if (!this._penaltyApplied) {
+      this._penaltyApplied = true;
+      if (typeof this.onPenaltyCallback === 'function' && this.skipPenalty && (this.skipPenalty.hp > 0 || this.skipPenalty.stamina > 0)) {
+        this.onPenaltyCallback({
+          type: 'skip',
+          challengeId: this.currentChallenge ? this.currentChallenge.id : null,
+          penalty: this.skipPenalty,
+        });
+      }
+    }
+
+    this.state = CHALLENGE_STATE.SKIPPED;
+    const next = this.advanceToNextChallenge();
+    const penaltyMsg = (this.skipPenalty && this.skipPenalty.hp) ? ` (-${this.skipPenalty.hp} HP chip)` : '';
+    this.setFeedback(`⏭️ Challenge skipped${penaltyMsg}! Loaded "${next ? next.title : 'Next'}".`, 'warn');
+    return true;
+  }
+
+  /**
+   * Advance to next eligible challenge in current tier or sequence
+   * @param {object} [options]
+   * @returns {object|null} loaded challenge
+   */
+  advanceToNextChallenge(options = {}) {
+    if (this._advanceTimeoutId) {
+      clearTimeout(this._advanceTimeoutId);
+      this._advanceTimeoutId = null;
+    }
+    const curId = this.currentChallenge ? this.currentChallenge.id : null;
+    const tier = this.activeTier === 'all' ? null : this.activeTier;
+    let next = questionRegistry.getNextInTier(curId, tier);
+    if (!next) {
+      next = questionRegistry.getNext(curId);
+    }
+    if (next) {
+      this.loadChallenge(next.id);
+    }
+    return next;
   }
 
   /**
@@ -1198,19 +1431,21 @@ export class ChallengeController {
    * @returns {Promise<{ unlocked: boolean, action: string, passed: boolean, error_type: string|null, error_message: string|null }>}
    */
   async submitCode() {
-    // 1. Guard against concurrent submissions
-    if (this.isExecuting) return { unlocked: false, error_type: 'BusyError', error_message: 'Execution in progress' };
-
-    // 2. Guard against expired countdown
-    if (this.isExpired || this.timeRemaining <= 0) {
-      this.setFeedback('Cannot submit: countdown has expired. Click "Retry Challenge".', 'error');
-      return { unlocked: false, error_type: 'ExpiredError', error_message: 'Countdown expired' };
-    }
-
-    // 3. Guard against repeated submission of already-unlocked attack
-    if (this.isUnlocked) {
+    // 1. Guard against repeated submission of already-unlocked attack
+    if (this.isUnlocked || this.state === CHALLENGE_STATE.SOLVED) {
       this.setFeedback('Attack already unlocked for this round! Click "Retry Challenge" to charge another.', 'warn');
       return { unlocked: false, error_type: 'AlreadyUnlockedError', error_message: 'Already unlocked' };
+    }
+
+    // 2. Guard against concurrent submissions
+    if (this.isExecuting || this.state === CHALLENGE_STATE.EXECUTING || this.state === CHALLENGE_STATE.TRANSITIONING) {
+      return { unlocked: false, error_type: 'BusyError', error_message: 'Execution in progress' };
+    }
+
+    // 3. Guard against expired countdown & timed-out state
+    if (this.isExpired || this.timeRemaining <= 0 || this.state === CHALLENGE_STATE.TIMED_OUT) {
+      this.setFeedback('Cannot submit: countdown has expired. Click "Retry Challenge".', 'error');
+      return { unlocked: false, error_type: 'ExpiredError', error_message: 'Countdown expired' };
     }
 
     // 4. Guard against missing runtime
@@ -1222,6 +1457,7 @@ export class ChallengeController {
 
     const code = this.getCode();
     this.isExecuting = true;
+    this.state = CHALLENGE_STATE.EXECUTING;
     if (this.dom.submitBtn) this.dom.submitBtn.disabled = true;
     this.setFeedback('Evaluating Python code in Web Worker...', 'loading');
 
@@ -1235,24 +1471,50 @@ export class ChallengeController {
 
       if (result.passed && result.unlocked) {
         // Successful verification!
+        this.state = CHALLENGE_STATE.SOLVED;
         this.setSlamUnlockedState(true);
         this.stopCountdown();
         if (this.dom.submitBtn) this.dom.submitBtn.disabled = true;
         if (this.dom.editor) this.dom.editor.disabled = true;
 
+        if (this.currentChallenge && this.currentChallenge.id) {
+          this.solvedChallenges.add(this.currentChallenge.id);
+          questionRegistry.markSolved(this.currentChallenge.id);
+          this.renderPickerOptions();
+        }
+
         const actionName = result.action || (this.currentChallenge && this.currentChallenge.unlockAction) || 'special';
         const actionLabel = actionName === 'special' ? 'Special Slam' : actionName.toUpperCase();
-        const successMsg = `🎉 Challenge Solved! All test cases passed. ${actionLabel} UNLEASHED!`;
-        this.setFeedback(successMsg, 'success');
 
-        // Trigger combat unlock callback
-        if (typeof this.onUnlockCallback === 'function') {
-          this.onUnlockCallback(actionName);
+        // Single-use reward gate
+        if (!this._rewardGranted) {
+          this._rewardGranted = true;
+          if (typeof this.onUnlockCallback === 'function') {
+            this.onUnlockCallback(actionName);
+          }
+        }
+
+        if (this.autoAdvanceOnSolve) {
+          this.state = CHALLENGE_STATE.TRANSITIONING;
+          const advanceDelaySec = (this.solveAdvanceDelayMs / 1000).toFixed(1);
+          this.setFeedback(`🎉 Solved! ${actionLabel} UNLEASHED! Next challenge in ${advanceDelaySec}s...`, 'success');
+          const tid = setTimeout(() => {
+            this._advanceTimeoutId = null;
+            this.advanceToNextChallenge();
+          }, this.solveAdvanceDelayMs);
+          if (typeof tid.unref === 'function') {
+            tid.unref();
+          }
+          this._advanceTimeoutId = tid;
+        } else {
+          const successMsg = `🎉 Challenge Solved! All test cases passed. ${actionLabel} UNLEASHED!`;
+          this.setFeedback(successMsg, 'success');
         }
 
         return result;
       } else {
         // Rejection / verification error
+        this.state = CHALLENGE_STATE.RUNNING;
         const errType = result.error_type || 'Rejected';
         const errDesc = result.error_message || 'Assertion failed';
         this.setFeedback(`❌ ${errType}: ${errDesc}`, 'error');
@@ -1260,6 +1522,7 @@ export class ChallengeController {
       }
     } catch (err) {
       this.isExecuting = false;
+      this.state = CHALLENGE_STATE.RUNNING;
       if (this.dom.submitBtn) this.dom.submitBtn.disabled = false;
       const errMsg = err.message || 'Worker execution error';
       this.setFeedback(`❌ Worker Error: ${errMsg}`, 'error');
@@ -1275,8 +1538,8 @@ export class ChallengeController {
 
   /**
    * Set feedback banner text and CSS state
-   * @param {string} message 
-   * @param {'idle'|'loading'|'success'|'error'|'warn'} state 
+   * @param {string} message
+   * @param {'idle'|'loading'|'success'|'error'|'warn'} state
    */
   setFeedback(message, state = 'idle') {
     if (!this.dom.feedback) return;
@@ -1302,7 +1565,7 @@ export class ChallengeController {
 
   /**
    * Update test case checklist indicators from execution details
-   * @param {Array} details 
+   * @param {Array} details
    */
   updateTestCaseIndicators(details = []) {
     const list = this.dom.testCasesList ? this.dom.testCasesList.querySelectorAll('.tc-item') : [this.dom.tc1, this.dom.tc2, this.dom.tc3];

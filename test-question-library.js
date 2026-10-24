@@ -5,12 +5,12 @@
  * 
  * Verifies:
  * 1. Strict JSON question schema validation (valid & invalid structures).
- * 2. Registry integrity: all 12 initial challenges present, unique IDs, all 6 topics covered.
+ * 2. Registry integrity: all 24 initial challenges present, unique IDs, all 6 topics covered.
  * 3. Safe challenge retrieval and deep-clone mutation isolation.
  * 4. Graceful handling of unknown, missing, and malformed challenge IDs.
  * 5. Filtering by topic, difficulty, and unlockable combat move.
  * 6. Sequential/progressive challenge navigation.
- * 7. Deterministic unit-test grading across all 12 challenges (zero AI dependency).
+ * 7. Deterministic unit-test grading across all 24 challenges (zero AI dependency).
  * 8. Regression verification of the existing Special Slam challenge.
  * 9. ChallengeController dynamic challenge loading and switching.
  */
@@ -77,11 +77,17 @@ console.log('=== STARTING QUESTION LIBRARY & REGISTRY TEST SUITE ===');
 }
 
 // ----------------------------------------------------------------------------
-// Test 2: Library Integrity (12 Initial Challenges & Topic Coverage)
+// Test 2: Library Integrity (24 Initial Challenges & Topic Coverage)
 // ----------------------------------------------------------------------------
 {
-  assert.strictEqual(questionRegistry.count(), 12, 'Question registry must contain exactly 12 initial challenges');
-  assert.strictEqual(CHALLENGES.length, 12, 'CHALLENGES dataset must contain 12 items');
+  assert.strictEqual(questionRegistry.count(), 24, 'Question registry must contain exactly 24 challenges');
+  assert.strictEqual(CHALLENGES.length, 24, 'CHALLENGES dataset must contain 24 items');
+
+  const counts = questionRegistry.getTierCounts();
+  assert.strictEqual(counts.basic, 8, 'Must have exactly 8 Basic challenges');
+  assert.strictEqual(counts.intermediate, 8, 'Must have exactly 8 Intermediate challenges');
+  assert.strictEqual(counts.hard, 8, 'Must have exactly 8 Hard challenges');
+  assert.strictEqual(counts.total, 24, 'Must have 24 total challenges');
 
   const seenIds = new Set();
   const seenTopics = new Set();
@@ -113,7 +119,7 @@ console.log('=== STARTING QUESTION LIBRARY & REGISTRY TEST SUITE ===');
     assert.ok(seenActions.has(act), `Unlock action '${act}' must be represented in library`);
   }
 
-  console.log('PASS: Test 2 - Question library contains 12 verified challenges covering all 6 topics and 4 combat moves');
+  console.log('PASS: Test 2 - Question library contains 24 verified challenges covering all 6 topics and 4 combat moves');
 }
 
 // ----------------------------------------------------------------------------
@@ -158,17 +164,17 @@ console.log('=== STARTING QUESTION LIBRARY & REGISTRY TEST SUITE ===');
 {
   // Filter by topic
   const listChallenges = questionRegistry.list({ topic: 'lists' });
-  assert.strictEqual(listChallenges.length, 3, 'Should find 3 list challenges');
+  assert.strictEqual(listChallenges.length, 6, 'Should find 6 list challenges');
   assert.ok(listChallenges.every((c) => c.topic === 'lists'), 'All returned must have topic lists');
 
   // Filter by difficulty
   const intermediateChallenges = questionRegistry.list({ difficulty: 'intermediate' });
-  assert.ok(intermediateChallenges.length >= 4, 'Should find intermediate challenges');
+  assert.strictEqual(intermediateChallenges.length, 8, 'Should find exactly 8 intermediate challenges');
   assert.ok(intermediateChallenges.every((c) => c.difficulty === 'intermediate'));
 
   // Filter by unlock action
   const blockChallenges = questionRegistry.list({ unlockAction: 'block' });
-  assert.strictEqual(blockChallenges.length, 4, 'Should find 4 block challenges');
+  assert.strictEqual(blockChallenges.length, 7, 'Should find 7 block challenges');
 
   // Progressive navigation (getNext)
   const next1 = questionRegistry.getNext('special-slam-1');
@@ -184,7 +190,7 @@ console.log('=== STARTING QUESTION LIBRARY & REGISTRY TEST SUITE ===');
 }
 
 // ----------------------------------------------------------------------------
-// Test 6: Deterministic Grading Simulation Across All 12 Challenges (No AI)
+// Test 6: Deterministic Grading Simulation Across All 24 Challenges (No AI)
 // ----------------------------------------------------------------------------
 {
   /**
@@ -247,7 +253,116 @@ console.log('=== STARTING QUESTION LIBRARY & REGISTRY TEST SUITE ===');
   // Challenge 12: debug-typo-1
   evaluateDeterministic((speed, duration) => speed * duration, questionRegistry.get('debug-typo-1').testCases);
 
-  console.log('PASS: Test 6 - 100% of the 12 challenges passed deterministic evaluation with exact inputs and outputs');
+  // Challenge 13: combo-chain-2
+  evaluateDeterministic((hits) => {
+    let t = 0, m = 1;
+    for (const h of hits) {
+      t += h * m;
+      if (h > 10) m++;
+    }
+    return t;
+  }, questionRegistry.get('combo-chain-2').testCases);
+
+  // Challenge 14: parry-timing-2
+  evaluateDeterministic((reaction, impact, tolerance) => Math.abs(reaction - impact) <= tolerance, questionRegistry.get('parry-timing-2').testCases);
+
+  // Challenge 15: target-priority-2
+  evaluateDeterministic((distances, maxRange) => {
+    const res = distances.filter(d => d <= maxRange);
+    res.sort((a, b) => a - b);
+    return res;
+  }, questionRegistry.get('target-priority-2').testCases);
+
+  // Challenge 16: debug-syntax-loop-2
+  evaluateDeterministic((charge, target) => {
+    let c = charge;
+    while (c < target) c += 5;
+    return c;
+  }, questionRegistry.get('debug-syntax-loop-2').testCases);
+
+  // Challenge 17: special-overdrive-3
+  evaluateDeterministic((base, energies) => {
+    let total = 0;
+    for (const e of energies) {
+      if (e >= 50) total += Math.floor(base * 2.5);
+      else if (e >= 20) total += Math.floor(base * 1.5);
+      else total += Math.floor(base * 0.5);
+    }
+    return total;
+  }, questionRegistry.get('special-overdrive-3').testCases);
+
+  // Challenge 18: longest-dodge-streak-3
+  evaluateDeterministic((log) => {
+    let max = 0, cur = 0;
+    for (const d of log) {
+      if (d) { cur++; if (cur > max) max = cur; }
+      else cur = 0;
+    }
+    return max;
+  }, questionRegistry.get('longest-dodge-streak-3').testCases);
+
+  // Challenge 19: optimal-strike-pair-3
+  evaluateDeterministic((strikes, target) => {
+    const seen = new Map();
+    for (let i = 0; i < strikes.length; i++) {
+      const comp = target - strikes[i];
+      if (seen.has(comp)) return [seen.get(comp), i];
+      seen.set(strikes[i], i);
+    }
+    return [];
+  }, questionRegistry.get('optimal-strike-pair-3').testCases);
+
+  // Challenge 20: armor-defense-matrix-3
+  evaluateDeterministic((incoming, def) => {
+    const armor = def.armor_rating || 0;
+    const shield = def.shield_active || false;
+    const fortify = def.fortify_stacks || 0;
+    const red = (shield ? armor * 2 : armor) + (fortify * 3);
+    return Math.max(0, incoming - red);
+  }, questionRegistry.get('armor-defense-matrix-3').testCases);
+
+  // Challenge 21: grid-flank-path-3
+  evaluateDeterministic((grid) => {
+    if (!grid.length || !grid[0].length) return 0;
+    const rows = grid.length, cols = grid[0].length;
+    if (rows === 1) return grid[0].reduce((a, b) => a + b, 0);
+    if (cols === 1) return grid.reduce((a, r) => a + r[0], 0);
+    let total = grid[0].reduce((a, b) => a + b, 0) + grid[rows - 1].reduce((a, b) => a + b, 0);
+    for (let r = 1; r < rows - 1; r++) total += grid[r][0] + grid[r][cols - 1];
+    return total;
+  }, questionRegistry.get('grid-flank-path-3').testCases);
+
+  // Challenge 22: stamina-budget-knapsack-3
+  evaluateDeterministic((techs, budget) => {
+    const dp = new Array(budget + 1).fill(0);
+    for (const tech of techs) {
+      for (let w = budget; w >= tech.cost; w--) {
+        if (dp[w - tech.cost] + tech.power > dp[w]) {
+          dp[w] = dp[w - tech.cost] + tech.power;
+        }
+      }
+    }
+    return dp[budget];
+  }, questionRegistry.get('stamina-budget-knapsack-3').testCases);
+
+  // Challenge 23: debug-recursion-depth-3
+  evaluateDeterministic((n) => {
+    if (n < 0) return 0;
+    if (n <= 1) return 1;
+    let res = 1;
+    for (let i = 2; i <= n; i++) res *= i;
+    return res;
+  }, questionRegistry.get('debug-recursion-depth-3').testCases);
+
+  // Challenge 24: counter-cadence-analyzer-3
+  evaluateDeterministic((ts) => {
+    if (ts.length < 3) return false;
+    const intervals = [];
+    for (let i = 1; i < ts.length; i++) intervals.push(ts[i] - ts[i - 1]);
+    return (Math.max(...intervals) - Math.min(...intervals)) <= 2;
+  }, questionRegistry.get('counter-cadence-analyzer-3').testCases);
+
+  console.log('PASS: Test 6 - 100% of the 24 challenges passed deterministic evaluation with exact inputs and outputs');
 }
 
 // ----------------------------------------------------------------------------

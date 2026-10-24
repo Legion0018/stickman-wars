@@ -1,8 +1,19 @@
 /**
  * src/challenges-data.js
- * 
+ *
  * Reusable Local Python Challenge Dataset
- * 12 high-quality challenges covering variables, conditionals, loops, functions, lists, and debugging.
+ * 24 validated challenges covering variables, conditionals, loops, functions, lists, and debugging.
+ *
+ * Tiers:
+ * - Basic: 8 challenges (variables, conditionals, loops, lists, debugging)
+ * - Intermediate: 8 challenges (loops, functions, lists, debugging)
+ * - Hard: 8 challenges (functions, loops, lists, conditionals, variables, debugging)
+ *
+ * Licensing & Attribution:
+ * - Handcrafted combat-themed challenges: (c) Stickman Wars Authors (MIT License)
+ * - Adapted canonical programming specifications: Exercism (Python track, MIT License)
+ *   and TheAlgorithms / Python (MIT License).
+ * All test cases and reference solutions are deterministically evaluated locally.
  */
 
 export const CHALLENGES = [
@@ -318,6 +329,369 @@ result = gauge + delta
       { input: "speed_boost(10, 5)", args: [10, 5], expected: 50 },
       { input: "speed_boost(0, 5)", args: [0, 5], expected: 0 },
       { input: "speed_boost(8, 2)", args: [8, 2], expected: 16 }
+    ],
+    unlockAction: "duck"
+  },
+  {
+    id: "combo-chain-2",
+    title: "Combo Chain: Escalating Multiplier",
+    topic: "loops",
+    difficulty: "intermediate",
+    instructions: "Calculate cumulative damage for a combo sequence. Start with multiplier = 1. For each hit in hit_values, add hit * multiplier to total. If hit > 10, increase multiplier by 1 for subsequent hits. Return the total damage.",
+    signature: "def combo_chain(hit_values: list) -> int",
+    entrypoint: "combo_chain",
+    starterCode: `def combo_chain(hit_values):
+    total = 0
+    # Calculate damage with escalating multiplier
+    return total`,
+    solutionCode: `def combo_chain(hit_values):
+    total = 0
+    multiplier = 1
+    for hit in hit_values:
+        total += hit * multiplier
+        if hit > 10:
+            multiplier += 1
+    return total`,
+    hints: [
+      "Start multiplier at 1.",
+      "Check if hit > 10 after adding to total, then increment multiplier by 1."
+    ],
+    testCases: [
+      { input: "combo_chain([5, 12, 8])", args: [[5, 12, 8]], expected: 33 },
+      { input: "combo_chain([])", args: [[]], expected: 0 },
+      { input: "combo_chain([15, 20])", args: [[15, 20]], expected: 55 }
+    ],
+    unlockAction: "slash"
+  },
+  {
+    id: "parry-timing-2",
+    title: "Parry Window: Reaction Velocity",
+    topic: "functions",
+    difficulty: "intermediate",
+    instructions: "A parry succeeds if defender_reaction is within tolerance milliseconds of attack_impact (inclusive), meaning abs(defender_reaction - attack_impact) <= tolerance. Return True if parry succeeds, False otherwise.",
+    signature: "def can_parry(defender_reaction: int, attack_impact: int, tolerance: int) -> bool",
+    entrypoint: "can_parry",
+    starterCode: `def can_parry(defender_reaction, attack_impact, tolerance):
+    # Return True if reaction is within tolerance of impact
+    return False`,
+    solutionCode: `def can_parry(defender_reaction, attack_impact, tolerance):
+    return abs(defender_reaction - attack_impact) <= tolerance`,
+    hints: [
+      "Use Python's built-in abs() function.",
+      "Compare with <= tolerance."
+    ],
+    testCases: [
+      { input: "can_parry(310, 300, 15)", args: [310, 300, 15], expected: true },
+      { input: "can_parry(325, 300, 15)", args: [325, 300, 15], expected: false },
+      { input: "can_parry(300, 300, 0)", args: [300, 300, 0], expected: true }
+    ],
+    unlockAction: "block"
+  },
+  {
+    id: "target-priority-2",
+    title: "Target Priority: Filter Threat Range",
+    topic: "lists",
+    difficulty: "intermediate",
+    instructions: "Given a list of enemy distances (in meters), filter and return a new list containing only enemies within threat range (distance <= max_range), sorted in ascending order (closest enemies first).",
+    signature: "def priority_targets(distances: list, max_range: int) -> list",
+    entrypoint: "priority_targets",
+    starterCode: `def priority_targets(distances, max_range):
+    # Return sorted list of distances <= max_range
+    return []`,
+    solutionCode: `def priority_targets(distances, max_range):
+    in_range = [d for d in distances if d <= max_range]
+    in_range.sort()
+    return in_range`,
+    hints: [
+      "Filter distances with d <= max_range.",
+      "Sort the resulting list in ascending order."
+    ],
+    testCases: [
+      { input: "priority_targets([15, 4, 25, 8, 2], 10)", args: [[15, 4, 25, 8, 2], 10], expected: [2, 4, 8] },
+      { input: "priority_targets([30, 40], 20)", args: [[30, 40], 20], expected: [] },
+      { input: "priority_targets([], 10)", args: [[], 10], expected: [] }
+    ],
+    unlockAction: "duck"
+  },
+  {
+    id: "debug-syntax-loop-2",
+    title: "Debug: Fix While Loop Condition",
+    topic: "debugging",
+    difficulty: "intermediate",
+    instructions: "Fix the loop condition in charge_shield(charge, target). While charge is strictly less than target, add 5 to charge. Return the final charge value. If charge is already >= target, return charge unchanged.",
+    signature: "def charge_shield(charge: int, target: int) -> int",
+    entrypoint: "charge_shield",
+    starterCode: `def charge_shield(charge, target):
+    # Fix the loop condition
+    while charge > target:
+        charge += 5
+    return charge`,
+    solutionCode: `def charge_shield(charge, target):
+    while charge < target:
+        charge += 5
+    return charge`,
+    hints: [
+      "Notice the comparison: charge > target will never loop if charge < target.",
+      "Change condition to charge < target."
+    ],
+    testCases: [
+      { input: "charge_shield(10, 25)", args: [10, 25], expected: 25 },
+      { input: "charge_shield(20, 20)", args: [20, 20], expected: 20 },
+      { input: "charge_shield(30, 20)", args: [30, 20], expected: 30 },
+      { input: "charge_shield(0, 12)", args: [0, 12], expected: 15 }
+    ],
+    unlockAction: "block"
+  },
+  {
+    id: "special-overdrive-3",
+    title: "Overdrive Matrix: Energy Conversion",
+    topic: "functions",
+    difficulty: "advanced",
+    instructions: "Calculate amplified strike damage across energy levels. Given base_power and an energy_levels list, for each energy level: if energy >= 50, amplify by 2.5; elif energy >= 20, amplify by 1.5; else multiply by 0.5. Add int() of each amplified strike to total. Return the total.",
+    signature: "def overdrive_total(base_power: int, energy_levels: list) -> int",
+    entrypoint: "overdrive_total",
+    starterCode: `def overdrive_total(base_power, energy_levels):
+    total = 0
+    # Calculate amplified energy strikes
+    return total`,
+    solutionCode: `def overdrive_total(base_power, energy_levels):
+    total = 0
+    for e in energy_levels:
+        if e >= 50:
+            total += int(base_power * 2.5)
+        elif e >= 20:
+            total += int(base_power * 1.5)
+        else:
+            total += int(base_power * 0.5)
+    return total`,
+    hints: [
+      "Iterate through each energy level.",
+      "Use int(base_power * factor) to truncate to integer.",
+      "Return 0 if list is empty."
+    ],
+    testCases: [
+      { input: "overdrive_total(10, [60, 25, 10])", args: [10, [60, 25, 10]], expected: 45 },
+      { input: "overdrive_total(20, [100])", args: [20, [100]], expected: 50 },
+      { input: "overdrive_total(15, [])", args: [15, []], expected: 0 }
+    ],
+    unlockAction: "special"
+  },
+  {
+    id: "longest-dodge-streak-3",
+    title: "Evasion Mastery: Longest Dodge Streak",
+    topic: "loops",
+    difficulty: "advanced",
+    instructions: "Given a combat log where True indicates a successful dodge and False indicates a hit taken, find and return the length of the longest consecutive dodge streak. Return 0 if combat_log is empty or contains no dodges.",
+    signature: "def longest_dodge_streak(combat_log: list) -> int",
+    entrypoint: "longest_dodge_streak",
+    starterCode: `def longest_dodge_streak(combat_log):
+    max_streak = 0
+    # Count longest consecutive True streak
+    return max_streak`,
+    solutionCode: `def longest_dodge_streak(combat_log):
+    max_streak = 0
+    current = 0
+    for dodge in combat_log:
+        if dodge:
+            current += 1
+            if current > max_streak:
+                max_streak = current
+        else:
+            current = 0
+    return max_streak`,
+    hints: [
+      "Keep track of both current streak and maximum streak.",
+      "Reset current streak to 0 when an entry is False."
+    ],
+    testCases: [
+      { input: "longest_dodge_streak([True, True, False, True, True, True, False])", args: [[true, true, false, true, true, true, false]], expected: 3 },
+      { input: "longest_dodge_streak([False, False])", args: [[false, false]], expected: 0 },
+      { input: "longest_dodge_streak([])", args: [[]], expected: 0 },
+      { input: "longest_dodge_streak([True, True, True, True])", args: [[true, true, true, true]], expected: 4 }
+    ],
+    unlockAction: "duck"
+  },
+  {
+    id: "optimal-strike-pair-3",
+    title: "Tactical Strike: Two-Hit Combination",
+    topic: "lists",
+    difficulty: "advanced",
+    instructions: "Find two distinct strikes in strike_damage list whose sum equals exact target_hp. Return a list of their indices [i, j] with i < j. If no two strikes sum to target_hp, return an empty list [].",
+    signature: "def find_strike_pair(strike_damage: list, target_hp: int) -> list",
+    entrypoint: "find_strike_pair",
+    starterCode: `def find_strike_pair(strike_damage, target_hp):
+    # Find indices [i, j] where strike_damage[i] + strike_damage[j] == target_hp
+    return []`,
+    solutionCode: `def find_strike_pair(strike_damage, target_hp):
+    seen = {}
+    for i, val in enumerate(strike_damage):
+        comp = target_hp - val
+        if comp in seen:
+            return [seen[comp], i]
+        seen[val] = i
+    return []`,
+    hints: [
+      "Use a hash map / dictionary to store seen strike damage values and their indices.",
+      "Return [seen[comp], i] when comp is found."
+    ],
+    testCases: [
+      { input: "find_strike_pair([10, 25, 30, 45, 15], 40)", args: [[10, 25, 30, 45, 15], 40], expected: [0, 2] },
+      { input: "find_strike_pair([5, 8, 12], 20)", args: [[5, 8, 12], 20], expected: [1, 2] },
+      { input: "find_strike_pair([10, 20], 50)", args: [[10, 20], 50], expected: [] }
+    ],
+    unlockAction: "slash"
+  },
+  {
+    id: "armor-defense-matrix-3",
+    title: "Armor Matrix: Tiered Mitigation",
+    topic: "conditionals",
+    difficulty: "advanced",
+    instructions: "Calculate mitigated damage using defense dictionary with keys 'armor_rating' (int), 'shield_active' (bool), and 'fortify_stacks' (int). If shield_active is True: damage is reduced by armor_rating * 2; else by armor_rating. Each fortify stack subtracts an additional 3 damage. Damage can never drop below 0. Return net damage as int.",
+    signature: "def calculate_mitigated_damage(incoming: int, defense: dict) -> int",
+    entrypoint: "calculate_mitigated_damage",
+    starterCode: `def calculate_mitigated_damage(incoming, defense):
+    # Calculate damage after armor, shield, and fortify reduction
+    return incoming`,
+    solutionCode: `def calculate_mitigated_damage(incoming, defense):
+    armor = defense.get('armor_rating', 0)
+    shield = defense.get('shield_active', False)
+    fortify = defense.get('fortify_stacks', 0)
+    reduction = (armor * 2 if shield else armor) + (fortify * 3)
+    return max(0, incoming - reduction)`,
+    hints: [
+      "Use defense.get() with fallback defaults.",
+      "Make sure to return max(0, incoming - reduction) so damage is never negative."
+    ],
+    testCases: [
+      { input: "calculate_mitigated_damage(50, {'armor_rating': 10, 'shield_active': True, 'fortify_stacks': 2})", args: [50, { armor_rating: 10, shield_active: true, fortify_stacks: 2 }], expected: 24 },
+      { input: "calculate_mitigated_damage(30, {'armor_rating': 15, 'shield_active': False, 'fortify_stacks': 5})", args: [30, { armor_rating: 15, shield_active: false, fortify_stacks: 5 }], expected: 0 },
+      { input: "calculate_mitigated_damage(20, {'armor_rating': 25, 'shield_active': True, 'fortify_stacks': 0})", args: [20, { armor_rating: 25, shield_active: true, fortify_stacks: 0 }], expected: 0 }
+    ],
+    unlockAction: "block"
+  },
+  {
+    id: "grid-flank-path-3",
+    title: "Tactical Flank: Arena Grid Perimeter",
+    topic: "lists",
+    difficulty: "advanced",
+    instructions: "In a 2D arena grid represented as a list of lists of integers, calculate the total hazard cost along the perimeter (first row, last row, first column, last column). Do not double-count corner cells! If the grid is empty or 1x1, return the total sum of cells safely.",
+    signature: "def perimeter_hazard(grid: list) -> int",
+    entrypoint: "perimeter_hazard",
+    starterCode: `def perimeter_hazard(grid):
+    # Return sum of all cells on the outer perimeter of the 2D grid
+    return 0`,
+    solutionCode: `def perimeter_hazard(grid):
+    if not grid or not grid[0]:
+        return 0
+    rows = len(grid)
+    cols = len(grid[0])
+    if rows == 1:
+        return sum(grid[0])
+    if cols == 1:
+        return sum(grid[r][0] for r in range(rows))
+    total = sum(grid[0]) + sum(grid[rows - 1])
+    for r in range(1, rows - 1):
+        total += grid[r][0] + grid[r][cols - 1]
+    return total`,
+    hints: [
+      "Sum the first row and last row completely.",
+      "For the intermediate rows, add only the first and last column elements."
+    ],
+    testCases: [
+      { input: "perimeter_hazard([[1, 2, 3], [4, 5, 6], [7, 8, 9]])", args: [[[1, 2, 3], [4, 5, 6], [7, 8, 9]]], expected: 40 },
+      { input: "perimeter_hazard([[5, 10], [15, 20]])", args: [[[5, 10], [15, 20]]], expected: 50 },
+      { input: "perimeter_hazard([])", args: [[]], expected: 0 },
+      { input: "perimeter_hazard([[42]])", args: [[[42]]], expected: 42 }
+    ],
+    unlockAction: "duck"
+  },
+  {
+    id: "stamina-budget-knapsack-3",
+    title: "Stamina Allocation: Maximize Move Power",
+    topic: "loops",
+    difficulty: "advanced",
+    instructions: "You have stamina_budget and a list of techniques, where each technique is a dict with 'cost' (int) and 'power' (int). Each technique can be used at most once. Find the maximum total power achievable without exceeding stamina_budget.",
+    signature: "def max_combat_power(techniques: list, stamina_budget: int) -> int",
+    entrypoint: "max_combat_power",
+    starterCode: `def max_combat_power(techniques, stamina_budget):
+    # Find maximum power achievable within stamina budget
+    return 0`,
+    solutionCode: `def max_combat_power(techniques, stamina_budget):
+    dp = [0] * (stamina_budget + 1)
+    for tech in techniques:
+        cost = tech['cost']
+        power = tech['power']
+        for w in range(stamina_budget, cost - 1, -1):
+            if dp[w - cost] + power > dp[w]:
+                dp[w] = dp[w - cost] + power
+    return dp[stamina_budget]`,
+    hints: [
+      "Use a 1D dynamic programming array dp of size stamina_budget + 1.",
+      "Iterate backwards from stamina_budget down to cost to avoid reusing the same technique."
+    ],
+    testCases: [
+      { input: "max_combat_power([{'cost': 2, 'power': 10}, {'cost': 3, 'power': 20}, {'cost': 4, 'power': 30}], 5)", args: [[{ cost: 2, power: 10 }, { cost: 3, power: 20 }, { cost: 4, power: 30 }], 5], expected: 30 },
+      { input: "max_combat_power([], 10)", args: [[], 10], expected: 0 },
+      { input: "max_combat_power([{'cost': 10, 'power': 100}], 5)", args: [[{ cost: 10, power: 100 }], 5], expected: 0 }
+    ],
+    unlockAction: "special"
+  },
+  {
+    id: "debug-recursion-depth-3",
+    title: "Debug: Fix Factorial Combo Multiplier",
+    topic: "debugging",
+    difficulty: "advanced",
+    instructions: "Fix the missing base case and negative guard in combo_multiplier(n). It should compute the mathematical factorial n! for n >= 0 (where 0! = 1 and 1! = 1). If n < 0, return 0.",
+    signature: "def combo_multiplier(n: int) -> int",
+    entrypoint: "combo_multiplier",
+    starterCode: `def combo_multiplier(n):
+    # Fix the missing base case and negative guard
+    return n * combo_multiplier(n - 1)`,
+    solutionCode: `def combo_multiplier(n):
+    if n < 0:
+        return 0
+    if n <= 1:
+        return 1
+    res = 1
+    for i in range(2, n + 1):
+        res *= i
+    return res`,
+    hints: [
+      "Guard against negative input: if n < 0: return 0.",
+      "Ensure n == 0 and n == 1 return 1 without infinite recursion."
+    ],
+    testCases: [
+      { input: "combo_multiplier(4)", args: [4], expected: 24 },
+      { input: "combo_multiplier(0)", args: [0], expected: 1 },
+      { input: "combo_multiplier(1)", args: [1], expected: 1 },
+      { input: "combo_multiplier(-3)", args: [-3], expected: 0 }
+    ],
+    unlockAction: "slash"
+  },
+  {
+    id: "counter-cadence-analyzer-3",
+    title: "Counter Cadence: Rhythm Analysis",
+    topic: "variables",
+    difficulty: "advanced",
+    instructions: "Given a list of strike interval timestamps (in milliseconds), determine if the sequence is rhythmic. A sequence is rhythmic if the difference between every consecutive timestamp is identical within a jitter tolerance of 2ms (i.e. max_diff - min_diff <= 2). If there are fewer than 3 timestamps, return False.",
+    signature: "def is_rhythmic_attack(timestamps: list) -> bool",
+    entrypoint: "is_rhythmic_attack",
+    starterCode: `def is_rhythmic_attack(timestamps):
+    # Return True if intervals between timestamps have <= 2ms variance\n    return False`,
+    solutionCode: `def is_rhythmic_attack(timestamps):
+    if len(timestamps) < 3:
+        return False
+    intervals = [timestamps[i] - timestamps[i - 1] for i in range(1, len(timestamps))]
+    return (max(intervals) - min(intervals)) <= 2`,
+    hints: [
+      "Calculate differences between consecutive timestamps.",
+      "Check if max(intervals) - min(intervals) <= 2.",
+      "Return False if len(timestamps) < 3."
+    ],
+    testCases: [
+      { input: "is_rhythmic_attack([100, 200, 301, 400])", args: [[100, 200, 301, 400]], expected: true },
+      { input: "is_rhythmic_attack([100, 200, 350])", args: [[100, 200, 350]], expected: false },
+      { input: "is_rhythmic_attack([100, 200])", args: [[100, 200]], expected: false }
     ],
     unlockAction: "duck"
   }

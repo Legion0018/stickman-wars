@@ -89,6 +89,11 @@ export function resolveWebSocketUrl(locationObj = (typeof window !== 'undefined'
 
   // 2. Public hosted domain or HTTPS origin -> public relay URL
   if (isHttps || !isLanOrLocal) {
+    if (host.includes('onrender.com') || host.includes('trycloudflare.com')) {
+      const wsProto = isHttps ? 'wss:' : 'ws:';
+      const portPart = locationObj.port ? `:${locationObj.port}` : '';
+      return `${wsProto}//${host}${portPart}`;
+    }
     return currentConfig.relayServerUrl || 'wss://relay.example.com';
   }
 

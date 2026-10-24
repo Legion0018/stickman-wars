@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: stickman-wars-relay
+    name: stickman-wars
     runtime: node
     plan: free
     buildCommand: npm install

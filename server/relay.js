@@ -13,6 +13,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export const ROOM_CODE_REGEX = /^[a-zA-Z0-9_\-]{1,64}$/;
 
@@ -26,6 +28,23 @@ export const ROOM_CODE_REGEX = /^[a-zA-Z0-9_\-]{1,64}$/;
 export function createRelayServer(options = {}) {
   const port = options.port !== undefined ? options.port : 8080;
   const host = options.host || '0.0.0.0';
+  const projectRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+
+  const MIME_TYPES = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.mjs': 'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.ico': 'image/x-icon',
+    '.svg': 'image/svg+xml',
+    '.wasm': 'application/wasm',
+    '.txt': 'text/plain; charset=utf-8',
+    '.map': 'application/json; charset=utf-8',
+  };
 
   const httpServer = createServer((req, res) => {
     let pathname = '/';
@@ -43,8 +62,62 @@ export function createRelayServer(options = {}) {
       res.end(JSON.stringify({ status: 'ok', time: Date.now() }));
       return;
     }
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Stickman Wars Relay Server is active.\n');
+
+    // Static file serving with strict path traversal & scope protection
+    let decodedPath = '/';
+    try {
+      decodedPath = decodeURIComponent(pathname);
+    } catch (_) {
+      decodedPath = pathname;
+    }
+
+    // Immediately reject any path traversal patterns
+    if (decodedPath.includes('..') || (req.url && req.url.includes('..'))) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('404 Not Found\n');
+      return;
+    }
+
+    const cleanPath = (decodedPath === '/' || decodedPath === '') ? '/index.html' : decodedPath;
+    const relativeRequestPath = cleanPath.replace(/^\/+/, '');
+    const resolvedPath = path.resolve(projectRoot, relativeRequestPath);
+    const relative = path.relative(projectRoot, resolvedPath);
+    const normalizedRel = relative.replace(/\\/g, '/');
+    const isSafe = !relative.startsWith('..') && !path.isAbsolute(relative);
+    const segments = normalizedRel.split('/');
+    const hasHiddenSegment = segments.some(seg => seg.startsWith('.'));
+    const ext = path.extname(resolvedPath).toLowerCase();
+    const isAllowedExt = Boolean(MIME_TYPES[ext]);
+
+    // Publicly servable root files and directories
+    const ALLOWED_ROOT_FILES = new Set(['index.html', 'style.css', 'config.js', 'favicon.ico', 'robots.txt']);
+    const ALLOWED_DIRS = ['src/', 'anim/', 'stick-fighter-animation/', 'python-poc/', 'assets/', 'img/'];
+    const isPublicScope = ALLOWED_ROOT_FILES.has(normalizedRel) || ALLOWED_DIRS.some(dir => normalizedRel.startsWith(dir));
+
+    if (isSafe && !hasHiddenSegment && isAllowedExt && isPublicScope && fs.existsSync(resolvedPath)) {
+      try {
+        const stat = fs.statSync(resolvedPath);
+        if (stat.isFile()) {
+          const contentType = MIME_TYPES[ext];
+          res.writeHead(200, {
+            'Content-Type': contentType,
+            'Content-Length': stat.size,
+            'Access-Control-Allow-Origin': '*',
+          });
+          if (req.method === 'HEAD') {
+            res.end();
+            return;
+          }
+          fs.createReadStream(resolvedPath).pipe(res);
+          return;
+        }
+      } catch (err) {
+        console.warn('[Relay] File read error:', err.message);
+      }
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('404 Not Found\n');
   });
 
   const wss = new WebSocketServer({ server: httpServer });

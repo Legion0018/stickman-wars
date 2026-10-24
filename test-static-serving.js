@@ -84,6 +84,13 @@ async function runTests() {
     assert(configBody.includes('stickman-wars.onrender.com'), 'GET /config.js contains deployed relay URL');
     console.log('    ✓ GET /config.js serves config module');
 
+    // 7B. GET /background.jpg
+    console.log('  Testing GET /background.jpg ...');
+    const resBg = await fetch(`${baseUrl}/background.jpg`);
+    assert.strictEqual(resBg.status, 200, 'GET /background.jpg must return 200 OK');
+    assert.match(resBg.headers.get('content-type') || '', /image\/jpeg/, 'GET /background.jpg Content-Type must be image/jpeg');
+    console.log('    ✓ GET /background.jpg serves JPEG background image');
+
     // 8. HEAD /
     console.log('  Testing HEAD / ...');
     const resHead = await fetch(`${baseUrl}/`, { method: 'HEAD' });

@@ -90,7 +90,7 @@ export function createRelayServer(options = {}) {
     const isAllowedExt = Boolean(MIME_TYPES[ext]);
 
     // Publicly servable root files and directories
-    const ALLOWED_ROOT_FILES = new Set(['index.html', 'style.css', 'config.js', 'favicon.ico', 'robots.txt']);
+    const ALLOWED_ROOT_FILES = new Set(['index.html', 'style.css', 'config.js', 'favicon.ico', 'robots.txt', 'background.jpg']);
     const ALLOWED_DIRS = ['src/', 'anim/', 'stick-fighter-animation/', 'python-poc/', 'assets/', 'img/'];
     const isPublicScope = ALLOWED_ROOT_FILES.has(normalizedRel) || ALLOWED_DIRS.some(dir => normalizedRel.startsWith(dir));
 
@@ -124,6 +124,18 @@ export function createRelayServer(options = {}) {
 
   // Map of roomCode => Set<WebSocket>
   const rooms = new Map();
+  // Map of roomCode => { healUsed: { A: boolean, B: boolean }, hp: { A: number, B: number } }
+  const roomState = new Map();
+
+  function getOrCreateRoomState(roomCode) {
+    if (!roomState.has(roomCode)) {
+      roomState.set(roomCode, {
+        healUsed: { A: false, B: false },
+        hp: { A: 100, B: 100 },
+      });
+    }
+    return roomState.get(roomCode);
+  }
 
   /**
    * Assign a client socket to a room
@@ -250,6 +262,30 @@ export function createRelayServer(options = {}) {
         relayToRoom(ws, msgStr);
         leaveRoom(ws);
         return;
+      }
+
+      // Enforce Authoritative Room-Level Action Validation (e.g. 1x heal per player per match)
+      if (ws.roomCode) {
+        const state = getOrCreateRoomState(ws.roomCode);
+
+        // Validation 1: Prevent duplicate or abused heal actions
+        if (msgObj.t === 'action' && msgObj.a === 'heal') {
+          const role = msgObj.sender === 'B' ? 'B' : 'A';
+          if (state.healUsed[role]) {
+            console.warn(`[Relay] Rejected duplicate heal packet from role ${role} in room "${ws.roomCode}"`);
+            try {
+              ws.send(JSON.stringify({ t: 'error', reason: 'Heal action already consumed this match' }));
+            } catch (_) {}
+            return;
+          }
+          state.healUsed[role] = true;
+        }
+
+        // Validation 2: Track authoritative sync_hp state
+        if (msgObj.t === 'sync_hp' && msgObj.outcome === 'HEAL') {
+          const role = msgObj.sender === 'B' ? 'B' : 'A';
+          state.healUsed[role] = true;
+        }
       }
 
       // Relay valid game packets to other peers in the room

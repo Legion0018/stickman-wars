@@ -697,4 +697,59 @@ result = gauge + delta
   }
 ];
 
+/**
+ * Dedicated Tactical Combat AI Move Strategy Challenge
+ * Author a deterministic decision function: choose_move(opponent_state, player_state) -> str
+ * Permitted outputs: 'heavy', 'block', 'duck', 'slash'
+ */
+export const TACTICAL_MOVE_CHALLENGE = {
+  id: "tactical-move-strategy",
+  title: "Tactical Combat AI: Move Strategy Selector",
+  topic: "dictionaries",
+  difficulty: "advanced",
+  instructions: "Author a tactical decision function choose_move(opponent_state, player_state) -> str. Both arguments are read-only state dictionaries.\\n\\nTactical Rules:\\n1. If opponent is preparing heavy attack (opponent_state.get('is_attacking') and opponent_state.get('action') == 'heavy'): return 'duck'.\\n2. If opponent is blocking (opponent_state.get('is_blocking') is True): return 'heavy'.\\n3. If opponent is idle and player's special is ready (player_state.get('special_ready') is True): return 'heavy'.\\n4. In all other neutral situations: return 'slash'.\\n\\nPermitted return values are strictly: 'heavy', 'block', 'duck', or 'slash'.",
+  signature: "def choose_move(opponent_state: dict, player_state: dict) -> str",
+  entrypoint: "choose_move",
+  starterCode: `def choose_move(opponent_state, player_state):
+    # Analyze state snapshots and return 'heavy', 'block', 'duck', or 'slash'
+    return 'slash'`,
+  solutionCode: `def choose_move(opponent_state, player_state):
+    if opponent_state.get('is_attacking') and opponent_state.get('action') == 'heavy':
+        return 'duck'
+    if opponent_state.get('is_blocking', False):
+        return 'heavy'
+    if player_state.get('special_ready', False):
+        return 'heavy'
+    return 'slash'`,
+  hints: [
+    "Check opponent_state.get('is_attacking') and action == 'heavy' first to dodge.",
+    "Counter defensive opponents (is_blocking=True) with 'heavy'.",
+    "Return only permitted move names: 'heavy', 'block', 'duck', or 'slash'."
+  ],
+  testCases: [
+    {
+      input: "choose_move({'is_attacking': True, 'action': 'heavy', 'is_blocking': False, 'hp': 80}, {'hp': 100, 'special_ready': True, 'heal_available': True})",
+      args: [{ is_attacking: true, action: 'heavy', is_blocking: false, hp: 80 }, { hp: 100, special_ready: true, heal_available: true }],
+      expected: "duck"
+    },
+    {
+      input: "choose_move({'is_attacking': False, 'action': 'none', 'is_blocking': True, 'hp': 70}, {'hp': 90, 'special_ready': False, 'heal_available': True})",
+      args: [{ is_attacking: false, action: 'none', is_blocking: true, hp: 70 }, { hp: 90, special_ready: false, heal_available: true }],
+      expected: "heavy"
+    },
+    {
+      input: "choose_move({'is_attacking': False, 'action': 'none', 'is_blocking': False, 'hp': 100}, {'hp': 100, 'special_ready': True, 'heal_available': True})",
+      args: [{ is_attacking: false, action: 'none', is_blocking: false, hp: 100 }, { hp: 100, special_ready: true, heal_available: true }],
+      expected: "heavy"
+    },
+    {
+      input: "choose_move({'is_attacking': False, 'action': 'none', 'is_blocking': False, 'hp': 50}, {'hp': 60, 'special_ready': False, 'heal_available': True})",
+      args: [{ is_attacking: false, action: 'none', is_blocking: false, hp: 50 }, { hp: 60, special_ready: false, heal_available: true }],
+      expected: "slash"
+    }
+  ],
+  unlockAction: "special",
+  isTacticalStrategy: true
+};
+
 export default CHALLENGES;

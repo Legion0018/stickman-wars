@@ -11,7 +11,7 @@
  * 5. Sequential/progressive challenge navigation.
  */
 
-import { CHALLENGES } from './challenges-data.js';
+import { CHALLENGES, TACTICAL_MOVE_CHALLENGE } from './challenges-data.js';
 
 export const ALLOWED_TOPICS = ['variables', 'conditionals', 'loops', 'functions', 'lists', 'debugging'];
 export const ALLOWED_DIFFICULTIES = ['beginner', 'basic', 'intermediate', 'advanced', 'hard'];
@@ -171,6 +171,9 @@ export class QuestionRegistry {
    */
   get(id) {
     if (!id || typeof id !== 'string') return null;
+    if (id === 'tactical-move-strategy' || (TACTICAL_MOVE_CHALLENGE && id === TACTICAL_MOVE_CHALLENGE.id)) {
+      return JSON.parse(JSON.stringify(TACTICAL_MOVE_CHALLENGE));
+    }
     const found = this._challenges.get(id);
     if (!found) return null;
     return JSON.parse(JSON.stringify(found));
@@ -183,6 +186,7 @@ export class QuestionRegistry {
    */
   has(id) {
     if (!id || typeof id !== 'string') return false;
+    if (id === 'tactical-move-strategy' || (TACTICAL_MOVE_CHALLENGE && id === TACTICAL_MOVE_CHALLENGE.id)) return true;
     return this._challenges.has(id);
   }
 

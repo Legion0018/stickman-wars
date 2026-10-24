@@ -363,17 +363,21 @@
             <span class="key-badge">A</span>
             <span class="action-text">Slash</span>
           </button>
-          <button type="button" id="btn-block" class="action-btn btn-block" title="Hotkey: S (Fighter A) / K (Fighter B) (Hold to guard)">
+          <button type="button" id="btn-block" class="action-btn btn-block" title="Hotkey: S (Fighter A) / K (Fighter B) (Hold to guard, max 3s)">
             <span class="key-badge">S</span>
             <span class="action-text">Block</span>
           </button>
-          <button type="button" id="btn-duck" class="action-btn btn-duck" title="Hotkey: D (Fighter A) / L (Fighter B) (Hold to crouch)">
+          <button type="button" id="btn-duck" class="action-btn btn-duck" title="Hotkey: D (Fighter A) / L (Fighter B) (Hold to crouch/dodge)">
             <span class="key-badge">D</span>
             <span class="action-text">Duck</span>
           </button>
-          <button type="button" id="btn-special" class="action-btn btn-special" title="Hotkey: F (Fighter A) / ; (Fighter B)">
+          <button type="button" id="btn-special" class="action-btn btn-special" title="Hotkey: F (Fighter A) / ; (Fighter B) (20 Dmg, 2.5s Cooldown)">
             <span class="key-badge">F</span>
             <span class="action-text">Special Slam</span>
+          </button>
+          <button type="button" id="btn-heal" class="action-btn btn-heal" title="Hotkey: H (Fighter A) / U (Fighter B) (Restore 25 HP, 1x limit)">
+            <span class="key-badge">H</span>
+            <span class="action-text">Heal <span id="heal-badge" class="action-sub-badge">1x</span></span>
           </button>
         </div>
 
@@ -384,7 +388,8 @@
             <kbd>A</kbd> Slash &nbsp;
             <kbd>S</kbd> Block &nbsp;
             <kbd>D</kbd> Duck &nbsp;
-            <kbd>F</kbd> Special
+            <kbd>F</kbd> Heavy &nbsp;
+            <kbd>H</kbd> Heal (1x)
           </div>
           <div class="legend-sep">|</div>
           <div class="legend-fighter legend-fighter-b">
@@ -392,7 +397,8 @@
             <kbd>J</kbd> Slash &nbsp;
             <kbd>K</kbd> Block &nbsp;
             <kbd>L</kbd> Duck &nbsp;
-            <kbd>;</kbd> Special
+            <kbd>;</kbd> Heavy &nbsp;
+            <kbd>U</kbd> Heal (1x)
           </div>
         </div>
 

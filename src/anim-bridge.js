@@ -130,9 +130,15 @@ export class AnimationBridge {
       if (actionName === 'slash') {
         actor.play('slash');
       } else if (actionName === 'block') {
+        if (typeof actor.setShield === 'function') {
+          actor.setShield(true);
+        }
         // When holding block, supply a long hold duration so the pose is sustained
         actor.play('block', { holdMs: isHold ? 60000 : 900 });
       } else if (actionName === 'duck') {
+        if (typeof actor.setShield === 'function') {
+          actor.setShield(false);
+        }
         // When holding duck, supply a long hold duration so the crouch is sustained
         actor.play('duck', { holdMs: isHold ? 60000 : 900 });
       } else if (actionName === 'special') {
@@ -140,6 +146,8 @@ export class AnimationBridge {
         if (this.effects && this.effects.showBanner) {
           this.effects.showBanner('SPECIAL SLAM', 'CRITICAL IMPACT', 650);
         }
+      } else if (actionName === 'guard_break') {
+        this.onGuardBreak(role);
       } else if (actionName === 'hurt') {
         actor.react('hit');
       }
@@ -159,6 +167,9 @@ export class AnimationBridge {
     if (!actor) return;
 
     try {
+      if (actionName === 'block' && typeof actor.setShield === 'function') {
+        actor.setShield(false);
+      }
       const current = actor.currentMove ? actor.currentMove() : null;
       if (current && (current.name === actionName || current.name === 'block' || current.name === 'duck')) {
         actor.cancel(); // Smoothly returns to idle
@@ -184,13 +195,45 @@ export class AnimationBridge {
     try {
       if (outcome === 'BLOCKED') {
         target.react('blocked');
+        if (this.effects) {
+          if (typeof this.effects.addSpark === 'function') {
+            this.effects.addSpark(target.x, target.groundY - 50, 8);
+          }
+          if (typeof this.effects.addShieldShards === 'function') {
+            this.effects.addShieldShards(target.x, target.groundY - 50, 4);
+          }
+        }
       } else if (outcome === 'DODGED') {
         target.react('dodged');
       } else if (outcome === 'HIT') {
         target.react('hit');
+        if (this.effects && typeof this.effects.addSpark === 'function') {
+          this.effects.addSpark(target.x, target.groundY - 50, 12);
+        }
       }
     } catch (err) {
       console.warn(`[AnimationBridge] Failed to apply reaction for outcome "${outcome}":`, err);
+    }
+  }
+
+  /**
+   * Handle guard break event (continuous block over-hold)
+   * @param {'A'|'B'} role
+   */
+  onGuardBreak(role) {
+    if (!this.isEnabled()) return;
+    const actor = this.getFighter(role);
+    if (!actor) return;
+    try {
+      if (typeof actor.shieldBreak === 'function') {
+        actor.shieldBreak();
+      }
+      actor.react('hit');
+      if (this.effects && typeof this.effects.showBanner === 'function') {
+        this.effects.showBanner('GUARD BREAK', 'DEFENSE SHATTERED', 800);
+      }
+    } catch (err) {
+      console.warn(`[AnimationBridge] Failed to trigger guard break for ${role}:`, err);
     }
   }
 

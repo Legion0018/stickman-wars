@@ -477,27 +477,27 @@ class MockPythonRunner {
   assert.strictEqual(fighterA.hp, 100, 'Fighter starts at 100 max HP');
   assert.strictEqual(fighterB.hp, 100, 'Fighter starts at 100 max HP');
 
-  // Strike lands unblocked on Fighter B -> HIT (-25 HP)
-  fighterB.checkHit('slash');
-  assert.strictEqual(fighterB.hp, 75, 'Fighter B takes 25 damage on HIT (100 -> 75 HP)');
+  // Strike lands unblocked on Fighter B -> HIT (-10 HP)
+  fighterB.checkHit('slash', 'normal');
+  assert.strictEqual(fighterB.hp, 90, 'Fighter B takes 10 damage on HIT (100 -> 90 HP)');
 
-  // Strike blocked by Fighter B -> BLOCKED (-10 chip damage)
+  // Strike blocked by Fighter B -> BLOCKED (-2 chip damage, 80% reduction)
   fighterB.setHolding('block', true);
-  fighterB.checkHit('slash');
-  assert.strictEqual(fighterB.hp, 65, 'Fighter B takes 10 chip damage when blocking (75 -> 65 HP)');
+  fighterB.checkHit('slash', 'normal');
+  assert.strictEqual(fighterB.hp, 88, 'Fighter B takes 2 chip damage when blocking (90 -> 88 HP)');
   fighterB.setHolding('block', false);
 
   // Strike dodged by Fighter B -> DODGED (0 damage)
   fighterB.setHolding('duck', true);
-  fighterB.checkHit('slash');
-  assert.strictEqual(fighterB.hp, 65, 'Fighter B takes 0 damage when ducking');
+  fighterB.checkHit('slash', 'normal');
+  assert.strictEqual(fighterB.hp, 88, 'Fighter B takes 0 damage when ducking');
   fighterB.setHolding('duck', false);
 
   // Health reset restores HP
   fighterB.resetHp();
   assert.strictEqual(fighterB.hp, 100, 'resetHp() restores HP back to 100');
 
-  console.log('PASS: Test 15 - Combat HUD health reduction math verified: HIT (-25 HP), Block (-10 HP), Dodge (0 HP)');
+  console.log('PASS: Test 15 - Combat HUD health reduction math verified: HIT (-10 HP), Block (-2 HP), Dodge (0 HP)');
 })
 .then(() => {
 // ----------------------------------------------------------------------------

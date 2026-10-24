@@ -369,27 +369,27 @@ const fighterB = new Fighter('B', '#444444', '#EF9F27');
 assert.strictEqual(fighterA.hp, 100, 'Fighter A starts at 100 HP');
 assert.strictEqual(fighterB.hp, 100, 'Fighter B starts at 100 HP');
 
-// 5A: Clean hit subtracts 25 HP
-const hitOutcome = fighterB.checkHit('slash');
+// 5A: Clean hit subtracts 10 HP (Normal damage)
+const hitOutcome = fighterB.checkHit('slash', 'normal');
 assert.strictEqual(hitOutcome, 'HIT', 'Idle fighter receives HIT outcome');
-assert.strictEqual(fighterB.hp, 75, 'Fighter B HP reduced by exactly 25 to 75');
+assert.strictEqual(fighterB.hp, 90, 'Fighter B HP reduced by exactly 10 to 90');
 
 // Calculate HUD percentage
 const pctB = Math.max(0, Math.min(100, (fighterB.hp / fighterB.maxHp) * 100));
-assert.strictEqual(pctB, 75, 'HUD fill bar width percentage matches authoritative HP (75%)');
+assert.strictEqual(pctB, 90, 'HUD fill bar width percentage matches authoritative HP (90%)');
 
-// 5B: Block absorbs damage (reduced to 10 HP damage)
+// 5B: Block absorbs 80% damage (reduced to 2 HP damage)
 fighterA.setHolding('block', true);
-const blockOutcome = fighterA.checkHit('slash');
+const blockOutcome = fighterA.checkHit('slash', 'normal');
 assert.strictEqual(blockOutcome, 'BLOCKED', 'Guarding fighter receives BLOCKED outcome');
-assert.strictEqual(fighterA.hp, 90, 'Fighter A HP reduced by only 10 to 90 on block');
+assert.strictEqual(fighterA.hp, 98, 'Fighter A HP reduced by only 2 to 98 on block');
 fighterA.setHolding('block', false);
 
 // 5C: Duck cleanly dodges attack (0 HP damage)
 fighterA.setHolding('duck', true);
 const dodgeOutcome = fighterA.checkHit('slash');
 assert.strictEqual(dodgeOutcome, 'DODGED', 'Ducking fighter receives DODGED outcome');
-assert.strictEqual(fighterA.hp, 90, 'Fighter A HP unchanged (0 damage on dodge)');
+assert.strictEqual(fighterA.hp, 98, 'Fighter A HP unchanged (0 damage on dodge: 98 HP)');
 fighterA.setHolding('duck', false);
 
 console.log('PASS: Test 5 - Combat resolution remains 100% authoritative in checkHit() and syncs to HUD');

@@ -1829,6 +1829,40 @@ html, body {
   border-color: var(--accent-slam);
 }
 
+.btn-heal {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.15));
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #d1fae5;
+}
+
+.btn-heal:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.25));
+  border-color: #34d399;
+}
+
+.btn-heal:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+.action-sub-badge {
+  background: rgba(16, 185, 129, 0.25);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 2px;
+}
+
+.btn-heal:disabled .action-sub-badge {
+  background: rgba(100, 116, 139, 0.25);
+  color: #94a3b8;
+  border-color: rgba(100, 116, 139, 0.4);
+}
+
 .keyboard-instructions {
   display: flex;
   flex-wrap: wrap;

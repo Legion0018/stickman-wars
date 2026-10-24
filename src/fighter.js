@@ -14,6 +14,24 @@ import {
   easeInOutQuad,
 } from './poses.js';
 
+/**
+ * Authoritative Combat Balancing Configuration
+ * Centralized specifications for HP, damage, defense, healing, and cooldowns.
+ */
+export const COMBAT_CONFIG = {
+  maxHp: 100,
+  normalDamage: 10,
+  blockedNormalDamage: 2,  // 80% damage reduction on ordinary attack
+  heavyDamage: 20,
+  blockedHeavyDamage: 4,   // 80% damage reduction on heavy attack
+  healAmount: 25,
+  maxHealUses: 1,          // Strictly 1 heal per player per match
+  heavyCooldownMs: 2500,   // Heavy attack cooldown
+  maxBlockDurationMs: 3000, // 3-second maximum continuous block before guard break
+  guardBreakStunMs: 800,   // Guard break vulnerable recovery duration
+  healRecoveryMs: 600,     // Short recovery period during healing
+};
+
 export class Fighter {
   /**
    * @param {string} id - 'A' or 'B'
@@ -57,8 +75,18 @@ export class Fighter {
     this.specialSlamOnStrikeLand = null;
 
     // Health and combat HUD state
-    this.maxHp = 100;
-    this.hp = 100;
+    this.maxHp = COMBAT_CONFIG.maxHp;
+    this.hp = COMBAT_CONFIG.maxHp;
+
+    // Healing & Cooldown State (Authoritative Invariants)
+    this.healUsesRemaining = COMBAT_CONFIG.maxHealUses;
+    this.healUsed = false;
+    this.heavyCooldownTimer = 0;
+    this.blockHoldTimer = 0;
+    this.isGuardBroken = false;
+    this.guardBreakTimer = 0;
+    this.healRecoveryTimer = 0;
+    this.onGuardBreakCallback = null;
 
     // Floating combat feedback text
     this.floatingTexts = [];
@@ -69,9 +97,16 @@ export class Fighter {
    */
   setHolding(action, isHolding) {
     if (action === 'block') {
+      if (isHolding && this.isGuardBroken) {
+        this.addFloatingText('GUARD BROKEN', '#ef4444');
+        return;
+      }
       this.isHoldingBlock = isHolding;
-      if (!isHolding && this.currentMoveName === 'block' && this.currentStageIndex >= this.currentMoveStages.length - 1) {
-        this.returnToIdle();
+      if (!isHolding) {
+        this.blockHoldTimer = 0;
+        if (this.currentMoveName === 'block' && this.currentStageIndex >= this.currentMoveStages.length - 1) {
+          this.returnToIdle();
+        }
       }
     } else if (action === 'duck') {
       this.isHoldingDuck = isHolding;
@@ -170,71 +205,165 @@ export class Fighter {
   }
 
   /**
-   * Start Special Slam Sequence:
+   * Start Special Slam Sequence (Heavy Strike):
    * Dims screen, sweeps orange banner (#D85A30) with bold text "SPECIAL SLAM",
-   * then executes the slash.
+   * then executes the slash with heavy damage.
+   * Enforces heavy cooldown of 2500ms.
    */
   playSpecialSlam(onStrikeLand = null) {
+    if (this.heavyCooldownTimer > 0) {
+      this.addFloatingText(`COOLDOWN (${(this.heavyCooldownTimer / 1000).toFixed(1)}s)`, '#ef9f27');
+      return false;
+    }
     this.specialSlamActive = true;
     this.specialSlamTimer = 0;
     this.specialSlamOnStrikeLand = onStrikeLand;
+    this.heavyCooldownTimer = COMBAT_CONFIG.heavyCooldownMs;
+    return true;
+  }
+
+  /**
+   * Check whether this fighter is eligible to heal
+   * @returns {{ allowed: boolean, reason?: string }}
+   */
+  canHeal() {
+    if (this.healUsesRemaining <= 0 || this.healUsed) {
+      return { allowed: false, reason: 'Heal already used this match (1x limit)' };
+    }
+    if (this.hp >= this.maxHp) {
+      return { allowed: false, reason: 'Health is already full (100 HP)' };
+    }
+    if (this.currentMoveName === 'hurt' || this.isGuardBroken) {
+      return { allowed: false, reason: 'Cannot heal while stunned or hurt' };
+    }
+    if (this.specialSlamActive || this.currentMoveName === 'special') {
+      return { allowed: false, reason: 'Cannot heal during heavy attack' };
+    }
+    if (this.healRecoveryTimer > 0) {
+      return { allowed: false, reason: 'Healing action in progress' };
+    }
+    return { allowed: true };
+  }
+
+  /**
+   * Authoritative Healing execution
+   * Restores up to 25 HP, strictly capped at maxHp (100).
+   * Limited to 1 use per match.
+   * @returns {{ success: boolean, healedAmount: number, newHp: number, reason?: string }}
+   */
+  heal() {
+    const check = this.canHeal();
+    if (!check.allowed) {
+      this.addFloatingText(check.reason || 'Heal rejected', '#ef4444');
+      return { success: false, healedAmount: 0, newHp: this.hp, reason: check.reason };
+    }
+    this.healUsed = true;
+    this.healUsesRemaining = 0;
+    const oldHp = this.hp;
+    this.hp = Math.min(this.maxHp, this.hp + COMBAT_CONFIG.healAmount);
+    const healedAmount = this.hp - oldHp;
+    this.healRecoveryTimer = COMBAT_CONFIG.healRecoveryMs;
+    this.addFloatingText(`+${healedAmount} HP`, '#10b981');
+    return { success: true, healedAmount, newHp: this.hp };
+  }
+
+  /**
+   * Trigger Guard Break when continuous block hold exceeds maxBlockDurationMs
+   */
+  triggerGuardBreak() {
+    this.isHoldingBlock = false;
+    this.blockHoldTimer = 0;
+    this.isGuardBroken = true;
+    this.guardBreakTimer = COMBAT_CONFIG.guardBreakStunMs;
+    this.playMove('hurt');
+    this.addFloatingText('GUARD BREAK!', '#ef4444');
+    if (typeof this.onGuardBreakCallback === 'function') {
+      try {
+        this.onGuardBreakCallback();
+      } catch (_) {}
+    }
   }
 
   /**
    * Combat Resolution:
    * When receiving a strike hit event:
-   * - If currently playing 'block', returns 'BLOCKED'.
-   * - If playing 'duck', returns 'DODGED'.
-   * - Otherwise returns 'HIT' and automatically triggers the 'hurt' animation sequence.
+   * - If currently holding/playing 'block' and not guard broken:
+   *     mitigates 80% damage (takes 2 on normal, 4 on heavy). Returns 'BLOCKED'.
+   * - If playing 'duck': mitigates 100% damage (takes 0). Returns 'DODGED'.
+   * - Otherwise takes full damage (10 on normal, 20 on heavy) and triggers 'hurt'. Returns 'HIT'.
    * 
-   * @param {string} incomingAction 
+   * @param {string} incomingAction - 'slash' | 'special' | 'heavy'
+   * @param {'normal' | 'heavy'} [attackType='normal']
    * @returns {'HIT' | 'BLOCKED' | 'DODGED'}
    */
-  checkHit(incomingAction = 'slash') {
+  checkHit(incomingAction = 'slash', attackType = 'normal') {
+    const isHeavy = attackType === 'heavy' || incomingAction === 'special';
     let outcome = 'HIT';
-    if (this.currentMoveName === 'block' || this.isHoldingBlock) {
+    let damageTaken = 0;
+
+    const isBlocking = (this.currentMoveName === 'block' || this.isHoldingBlock) && !this.isGuardBroken;
+    const isDucking = (this.currentMoveName === 'duck' || this.isHoldingDuck);
+
+    if (isBlocking) {
       outcome = 'BLOCKED';
-      this.hp = Math.max(0, this.hp - 10);
-    } else if (this.currentMoveName === 'duck' || this.isHoldingDuck) {
+      damageTaken = isHeavy ? COMBAT_CONFIG.blockedHeavyDamage : COMBAT_CONFIG.blockedNormalDamage;
+      this.hp = Math.max(0, this.hp - damageTaken);
+    } else if (isDucking) {
       outcome = 'DODGED';
+      damageTaken = 0;
     } else {
       outcome = 'HIT';
-      this.hp = Math.max(0, this.hp - 25);
+      damageTaken = isHeavy ? COMBAT_CONFIG.heavyDamage : COMBAT_CONFIG.normalDamage;
+      this.hp = Math.max(0, this.hp - damageTaken);
       this.playMove('hurt');
     }
 
-    this.addFloatingText(outcome);
+    this.addFloatingText(outcome, null, damageTaken);
     return outcome;
   }
 
   /**
-   * Reset health to max HP
+   * Reset health to max HP and clear cooldowns/guard states
    */
   resetHp() {
     this.hp = this.maxHp;
+    this.healUsesRemaining = COMBAT_CONFIG.maxHealUses;
+    this.healUsed = false;
+    this.heavyCooldownTimer = 0;
+    this.blockHoldTimer = 0;
+    this.isGuardBroken = false;
+    this.guardBreakTimer = 0;
+    this.healRecoveryTimer = 0;
   }
 
   /**
    * Add floating feedback text above fighter
+   * @param {string} outcome
+   * @param {string} [customColor=null]
+   * @param {number} [damage=0]
    */
-  addFloatingText(outcome) {
-    let color = '#ef4444'; // Red for HIT
-    let text = 'HIT!';
+  addFloatingText(outcome, customColor = null, damage = 0) {
+    let color = customColor || '#ef4444'; // Red for HIT
+    let text = outcome;
     if (outcome === 'BLOCKED') {
-      color = '#38bdf8'; // Cyan-Blue for BLOCKED
+      color = customColor || '#38bdf8'; // Cyan-Blue for BLOCKED
       text = 'BLOCKED!';
     } else if (outcome === 'DODGED') {
-      color = '#10b981'; // Emerald Green for DODGED
+      color = customColor || '#10b981'; // Emerald Green for DODGED
       text = 'DODGED!';
+    } else if (outcome === 'HIT') {
+      color = customColor || '#ef4444';
+      text = 'HIT!';
     }
 
     this.floatingTexts.push({
       text,
+      damage,
       color,
       yOffset: -102,
       alpha: 1.0,
-      lifeMs: 1100,
-      maxLifeMs: 1100,
+      lifeMs: 1200,
+      maxLifeMs: 1200,
     });
   }
 
@@ -244,6 +373,36 @@ export class Fighter {
    */
   update(dt) {
     this.breathTimer += dt;
+
+    // Heavy attack cooldown decrement
+    if (this.heavyCooldownTimer > 0) {
+      this.heavyCooldownTimer = Math.max(0, this.heavyCooldownTimer - dt);
+    }
+
+    // Heal recovery period decrement
+    if (this.healRecoveryTimer > 0) {
+      this.healRecoveryTimer = Math.max(0, this.healRecoveryTimer - dt);
+    }
+
+    // Guard break recovery timer decrement
+    if (this.isGuardBroken) {
+      this.guardBreakTimer -= dt;
+      if (this.guardBreakTimer <= 0) {
+        this.isGuardBroken = false;
+        this.guardBreakTimer = 0;
+        this.returnToIdle();
+      }
+    }
+
+    // Continuous block hold guard break tracking
+    if (this.isHoldingBlock && (this.currentMoveName === 'block' || this.isHoldingBlock) && !this.isGuardBroken) {
+      this.blockHoldTimer += dt;
+      if (this.blockHoldTimer >= COMBAT_CONFIG.maxBlockDurationMs) {
+        this.triggerGuardBreak();
+      }
+    } else {
+      this.blockHoldTimer = 0;
+    }
 
     // Handle strike land timer for slash
     if (this.strikeLandTimer > 0) {
@@ -406,6 +565,37 @@ export class Fighter {
     ctx.lineTo(handX + nx * guardHalf, handY + ny * guardHalf);
     ctx.stroke();
     ctx.restore();
+
+    // 7B. Visible Energy Shield Dome when blocking
+    const isBlocking = (this.currentMoveName === 'block' || this.isHoldingBlock) && !this.isGuardBroken;
+    if (isBlocking) {
+      ctx.save();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = 'rgba(56, 189, 248, 0.75)';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      // Forward convex energy shield arc covering torso & upper body
+      ctx.arc(18, -48 + hipBreath, 38, -Math.PI * 0.48, Math.PI * 0.48);
+      ctx.stroke();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 7C. Heavy Attack Telegraph Charging Aura
+    if (this.specialSlamActive) {
+      ctx.save();
+      const pulse = Math.sin(this.breathTimer * 0.02) * 4;
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(239, 68, 68, 0.85)';
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.arc(0, -50 + hipBreath, 46 + pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     ctx.restore(); // restore translate & scale
 

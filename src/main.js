@@ -6,7 +6,7 @@
  */
 
 import { CONFIG } from '../config.js';
-import { Fighter } from './fighter.js';
+import { Fighter, COMBAT_CONFIG } from './fighter.js';
 import { LoopbackTransport } from './loopback-transport.js';
 import { WebSocketTransport } from './websocket-transport.js';
 import { StatusPanel } from './status-panel.js';
@@ -37,6 +37,18 @@ const btnSlash = hasDoc ? document.getElementById('btn-slash') : null;
 const btnBlock = hasDoc ? document.getElementById('btn-block') : null;
 const btnDuck = hasDoc ? document.getElementById('btn-duck') : null;
 const btnSpecial = hasDoc ? document.getElementById('btn-special') : null;
+const btnHeal = hasDoc ? document.getElementById('btn-heal') : null;
+const healBadge = hasDoc ? document.getElementById('heal-badge') : null;
+
+// Arena Background Image Asset
+let arenaBgImage = null;
+if (typeof Image !== 'undefined') {
+  arenaBgImage = new Image();
+  arenaBgImage.src = 'background.jpg';
+}
+
+// Tactical Combat AI Strategy State (player-authored via Python editor)
+let isTacticalStrategyEquipped = false;
 
 // Initialize Diagnostics Panel
 const statusPanel = new StatusPanel({
@@ -60,6 +72,17 @@ const statusPanel = new StatusPanel({
 // Fighter B at x=440 facing left (mirror=true)
 const fighterA = new Fighter('A', '#333333', '#EF9F27');
 const fighterB = new Fighter('B', '#444444', '#EF9F27');
+
+fighterA.onGuardBreakCallback = () => {
+  broadcastAction('guard_break', 'A', false);
+  animBridge.onGuardBreak('A');
+  statusPanel.log('Fighter A GUARD BROKEN from holding block too long!', 'combat');
+};
+fighterB.onGuardBreakCallback = () => {
+  broadcastAction('guard_break', 'B', false);
+  animBridge.onGuardBreak('B');
+  statusPanel.log('Fighter B GUARD BROKEN from holding block too long!', 'combat');
+};
 
 // Application State
 let localRole = 'A'; // 'A' or 'B'
@@ -121,6 +144,22 @@ function updateCombatHud() {
     }
     hudHpFillB.className = 'hud-hp-bar-fill' + (pctB < 30 ? ' hp-critical' : pctB < 60 ? ' hp-warning' : '');
   }
+
+  // Update Heal Action Button availability & remaining uses
+  const localFighter = localRole === 'A' ? fighterA : fighterB;
+  if (btnHeal) {
+    const remaining = localFighter.healUsesRemaining;
+    if (healBadge) {
+      healBadge.textContent = `${remaining}x`;
+    }
+    const isFullHp = localFighter.hp >= localFighter.maxHp;
+    btnHeal.disabled = (remaining <= 0 || isFullHp);
+    btnHeal.title = remaining <= 0
+      ? 'Heal already used this match (1x limit)'
+      : isFullHp
+        ? 'Already at full health (100 HP)'
+        : `Hotkey: ${localRole === 'A' ? 'H' : 'U'} (Restore 25 HP, 1x limit)`;
+  }
 }
 
 /**
@@ -128,10 +167,12 @@ function updateCombatHud() {
  * Called when a slash's strike lands (~310ms after strike motion begins)
  * @param {Fighter} attacker 
  * @param {Fighter} target 
+ * @param {'normal'|'heavy'} [attackType='normal']
  */
-function handleStrikeLand(attacker, target) {
-  const outcome = target.checkHit('slash');
-  statusPanel.log(`Strike from Fighter ${attacker.id} landed on Fighter ${target.id} -> ${outcome}`, 'combat');
+function handleStrikeLand(attacker, target, attackType = 'normal') {
+  const outcome = target.checkHit(attackType === 'heavy' ? 'special' : 'slash', attackType);
+  const dmgLabel = attackType === 'heavy' ? '20 Heavy' : '10 Normal';
+  statusPanel.log(`Strike (${dmgLabel}) from Fighter ${attacker.id} landed on Fighter ${target.id} -> ${outcome}`, 'combat');
   animBridge.onCombatResolution(attacker.id, target.id, outcome);
   updateCombatHud();
 
@@ -206,15 +247,93 @@ function triggerFighterAction(targetRole, actionName, isHold = false) {
     return;
   }
 
+  // Healing Action: 25 HP restore, 1x per match limit, rejected at full HP or when stunned
+  if (actionName === 'heal') {
+    const healRes = actor.heal();
+    if (!healRes.success) {
+      statusPanel.log(`Fighter ${targetRole} heal rejected: ${healRes.reason}`, 'action');
+      return;
+    }
+    updateCombatHud();
+    broadcastAction('heal', targetRole, false);
+    statusPanel.log(`Fighter ${targetRole} healed +${healRes.healedAmount} HP (now ${healRes.newHp} HP)`, 'combat');
+    if (isConnected && transport) {
+      try {
+        transport.send({
+          t: 'sync_hp',
+          v: 1,
+          sender: localRole,
+          targetId: targetRole,
+          outcome: 'HEAL',
+          hpA: fighterA.hp,
+          hpB: fighterB.hp,
+          ts: performance.now(),
+        });
+        statusPanel.incrementSent();
+      } catch (_) {}
+    }
+    return;
+  }
+
   if (actionName === 'special') {
-    actor.playSpecialSlam(() => handleStrikeLand(actor, opponent));
+    // If tactical AI strategy is equipped, evaluate the live read-only combat snapshot
+    if (isTacticalStrategyEquipped) {
+      const oppState = Object.freeze({
+        is_attacking: opponent.currentMoveName === 'slash' || opponent.specialSlamActive,
+        action: opponent.specialSlamActive ? 'heavy' : (opponent.currentMoveName === 'slash' ? 'slash' : 'none'),
+        is_blocking: opponent.isHoldingBlock || opponent.currentMoveName === 'block',
+        hp: opponent.hp,
+      });
+      const plyrState = Object.freeze({
+        hp: actor.hp,
+        special_ready: actor.heavyCooldownTimer <= 0,
+        heal_available: actor.healUsesRemaining > 0,
+      });
+
+      let tacticalMove = 'slash';
+      if (oppState.is_attacking && oppState.action === 'heavy') {
+        tacticalMove = 'duck';
+      } else if (oppState.is_blocking) {
+        tacticalMove = 'heavy';
+      } else if (plyrState.special_ready) {
+        tacticalMove = 'heavy';
+      } else {
+        tacticalMove = 'slash';
+      }
+
+      statusPanel.log(`[Tactical AI] Live combat snapshot analyzed -> Executing '${tacticalMove.toUpperCase()}'`, 'action');
+
+      if (tacticalMove === 'duck') {
+        actor.playMove('duck');
+        broadcastAction('duck', targetRole, false);
+        animBridge.onAction(targetRole, 'duck', false);
+        return;
+      } else if (tacticalMove === 'block') {
+        actor.playMove('block');
+        broadcastAction('block', targetRole, false);
+        animBridge.onAction(targetRole, 'block', false);
+        return;
+      } else if (tacticalMove === 'slash') {
+        actor.playMove('slash', () => handleStrikeLand(actor, opponent, 'normal'));
+        broadcastAction('slash', targetRole, false);
+        animBridge.onAction(targetRole, 'slash', false);
+        return;
+      }
+      // If tactical choice was 'heavy', proceed with heavy strike execution below
+    }
+
+    const started = actor.playSpecialSlam(() => handleStrikeLand(actor, opponent, 'heavy'));
+    if (!started) {
+      statusPanel.log(`Fighter ${targetRole} heavy attack on cooldown (${(actor.heavyCooldownTimer / 1000).toFixed(1)}s remaining)`, 'action');
+      return;
+    }
     broadcastAction('special', targetRole, false);
-    statusPanel.log(`Fighter ${targetRole} executed SPECIAL SLAM`, 'action');
+    statusPanel.log(`Fighter ${targetRole} executed SPECIAL SLAM (20 Heavy Dmg)`, 'action');
     animBridge.onAction(targetRole, 'special', false);
   } else if (actionName === 'slash') {
-    actor.playMove('slash', () => handleStrikeLand(actor, opponent));
+    actor.playMove('slash', () => handleStrikeLand(actor, opponent, 'normal'));
     broadcastAction('slash', targetRole, false);
-    statusPanel.log(`Fighter ${targetRole} triggered slash`, 'action');
+    statusPanel.log(`Fighter ${targetRole} triggered slash (10 Dmg)`, 'action');
     animBridge.onAction(targetRole, 'slash', false);
   } else if (actionName === 'block') {
     actor.playMove('block');
@@ -288,7 +407,7 @@ function getActionFromKey(e) {
   const code = e.code;
   const key = e.key ? e.key.toUpperCase() : '';
 
-  // Fighter A keys: A, S, D, F
+  // Fighter A keys: A, S, D, F, H
   if (code === 'KeyA' || key === 'A') {
     return { role: 'A', action: 'slash', hold: false };
   }
@@ -301,8 +420,11 @@ function getActionFromKey(e) {
   if (code === 'KeyF' || key === 'F') {
     return { role: 'A', action: 'special', hold: false };
   }
+  if (code === 'KeyH' || key === 'H') {
+    return { role: 'A', action: 'heal', hold: false };
+  }
 
-  // Fighter B keys: J, K, L, ;
+  // Fighter B keys: J, K, L, ;, U
   if (code === 'KeyJ' || key === 'J') {
     return { role: 'B', action: 'slash', hold: false };
   }
@@ -314,6 +436,9 @@ function getActionFromKey(e) {
   }
   if (code === 'Semicolon' || e.key === ';' || e.key === ':') {
     return { role: 'B', action: 'special', hold: false };
+  }
+  if (code === 'KeyU' || key === 'U') {
+    return { role: 'B', action: 'heal', hold: false };
   }
 
   return null;
@@ -328,6 +453,7 @@ function updateActionButtonsUI() {
   const blockKey = isA ? 'S' : 'K';
   const duckKey = isA ? 'D' : 'L';
   const specialKey = isA ? 'F' : ';';
+  const healKey = isA ? 'H' : 'U';
 
   if (btnSlash) {
     const badge = btnSlash.querySelector('.key-badge');
@@ -337,17 +463,22 @@ function updateActionButtonsUI() {
   if (btnBlock) {
     const badge = btnBlock.querySelector('.key-badge');
     if (badge) badge.textContent = blockKey;
-    btnBlock.title = `Hotkey: ${blockKey} (Hold to guard)`;
+    btnBlock.title = `Hotkey: ${blockKey} (Hold to guard, max 3s)`;
   }
   if (btnDuck) {
     const badge = btnDuck.querySelector('.key-badge');
     if (badge) badge.textContent = duckKey;
-    btnDuck.title = `Hotkey: ${duckKey} (Hold to crouch)`;
+    btnDuck.title = `Hotkey: ${duckKey} (Hold to crouch/dodge)`;
   }
   if (btnSpecial) {
     const badge = btnSpecial.querySelector('.key-badge');
     if (badge) badge.textContent = specialKey;
-    btnSpecial.title = `Hotkey: ${specialKey} (${isA ? 'Fighter A' : 'Fighter B'})`;
+    btnSpecial.title = `Hotkey: ${specialKey} (${isA ? 'Fighter A' : 'Fighter B'}) (20 Dmg, 2.5s Cooldown)`;
+  }
+  if (btnHeal) {
+    const badge = btnHeal.querySelector('.key-badge');
+    if (badge) badge.textContent = healKey;
+    btnHeal.title = `Hotkey: ${healKey} (${isA ? 'Fighter A' : 'Fighter B'}) (Restore 25 HP, 1x limit)`;
   }
 }
 
@@ -380,14 +511,19 @@ function handleTransportMessage(msg) {
         return;
       }
 
-      // Authoritative defender synchronization:
-      // Only accept HP reconciliation if the sender was the defender (target) of the strike
+      // Authoritative defender & healer synchronization:
+      // Only accept HP reconciliation if the sender was the target (self-heal or defender)
       if (msg.targetId === msg.sender) {
         if (typeof msg.hpA === 'number' && typeof msg.hpB === 'number') {
-          fighterA.hp = msg.hpA;
-          fighterB.hp = msg.hpB;
+          if (msg.outcome === 'HEAL') {
+            const healer = msg.sender === 'A' ? fighterA : fighterB;
+            healer.healUsed = true;
+            healer.healUsesRemaining = 0;
+          }
+          fighterA.hp = Math.max(0, Math.min(fighterA.maxHp, msg.hpA));
+          fighterB.hp = Math.max(0, Math.min(fighterB.maxHp, msg.hpB));
           updateCombatHud();
-          statusPanel.log(`[Reconciled] HP synced from defender (${msg.sender}): outcome=${msg.outcome}, A=${fighterA.hp}, B=${fighterB.hp}`, 'combat');
+          statusPanel.log(`[Reconciled] HP synced from ${msg.outcome === 'HEAL' ? 'healer' : 'defender'} (${msg.sender}): outcome=${msg.outcome}, A=${fighterA.hp}, B=${fighterB.hp}`, 'combat');
         }
       }
       break;
@@ -427,13 +563,21 @@ function handleTransportMessage(msg) {
         actor.setHolding(msg.a, Boolean(msg.hold));
       }
 
-      if (msg.a === 'special') {
-        actor.playSpecialSlam(() => handleStrikeLand(actor, target));
-        statusPanel.log(`[Remote] Fighter ${msg.sender} executed SPECIAL SLAM`, 'action');
+      if (msg.a === 'heal') {
+        const healRes = actor.heal();
+        updateCombatHud();
+        statusPanel.log(`[Remote] Fighter ${msg.sender} executed heal`, 'action');
+      } else if (msg.a === 'guard_break') {
+        actor.triggerGuardBreak();
+        animBridge.onGuardBreak(msg.sender);
+        statusPanel.log(`[Remote] Fighter ${msg.sender} GUARD BROKEN`, 'combat');
+      } else if (msg.a === 'special') {
+        actor.playSpecialSlam(() => handleStrikeLand(actor, target, 'heavy'));
+        statusPanel.log(`[Remote] Fighter ${msg.sender} executed SPECIAL SLAM (20 Heavy Dmg)`, 'action');
         animBridge.onAction(msg.sender, 'special', false);
       } else if (msg.a === 'slash') {
-        actor.playMove('slash', () => handleStrikeLand(actor, target));
-        statusPanel.log(`[Remote] Fighter ${msg.sender} initiated slash`, 'action');
+        actor.playMove('slash', () => handleStrikeLand(actor, target, 'normal'));
+        statusPanel.log(`[Remote] Fighter ${msg.sender} initiated slash (10 Dmg)`, 'action');
         animBridge.onAction(msg.sender, 'slash', false);
       } else if (msg.a === 'block') {
         actor.playMove('block');
@@ -718,6 +862,7 @@ connectRoom(currentRoom);
 // Action Buttons: trigger actions for currently selected player role
 if (btnSlash) btnSlash.addEventListener('click', () => triggerFighterAction(localRole, 'slash'));
 if (btnSpecial) btnSpecial.addEventListener('click', () => triggerFighterAction(localRole, 'special'));
+if (btnHeal) btnHeal.addEventListener('click', () => triggerFighterAction(localRole, 'heal'));
 
 // Support both click and press-and-hold for block and duck buttons
 if (btnBlock) {
@@ -746,6 +891,13 @@ if (typeof window !== 'undefined') {
 // Initialize Python Combat Challenge Controller (Hybrid Combat Integration)
 const challengeController = new ChallengeController({
   onUnlock: (action) => {
+    if (action === 'equip_tactical_strategy') {
+      isTacticalStrategyEquipped = true;
+      const activeFighter = localRole === 'A' ? fighterA : fighterB;
+      activeFighter.addFloatingText('TACTICAL AI ACTIVE', '#38bdf8');
+      statusPanel.log(`[Python] Tactical AI Move Strategy verified & equipped for Fighter ${localRole}!`, 'combat');
+      return;
+    }
     // Verified Python code unleashes Special Slam for local player
     triggerFighterAction(localRole, action || 'special', false);
     statusPanel.log(`[Python] Code verified! Special Slam unleashed for Fighter ${localRole}`, 'combat');
@@ -890,16 +1042,31 @@ if (diagHeader && diagBody) {
  * Render Arena Background & Floor
  */
 function drawArena(ctx, width, height) {
-  // Clear with clean subtle arena background
-  const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-  bgGrad.addColorStop(0, '#1e2430');
-  bgGrad.addColorStop(0.53, '#252d3d');
-  bgGrad.addColorStop(0.53, '#1a1f29');
-  bgGrad.addColorStop(1, '#11141c');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, width, height);
+  // 1. Deliberately Framed Anime Arena Background (640x792 portrait cropped to 640x360 landscape)
+  if (arenaBgImage && (arenaBgImage.complete || arenaBgImage.naturalWidth > 0)) {
+    // Exact 1:1 source crop framing waterfall, mountains, and stone warriors without stretching
+    ctx.drawImage(arenaBgImage, 0, 120, 640, 360, 0, 0, width, height);
 
-  // Subtle arena background pillars / grid
+    // Subtle contrast-enhancing vignette overlay ensuring stick figures, vector swords, shield domes & HUD stay clear
+    const overlay = ctx.createLinearGradient(0, 0, 0, height);
+    overlay.addColorStop(0, 'rgba(10, 15, 26, 0.35)');
+    overlay.addColorStop(0.53, 'rgba(10, 15, 26, 0.22)');
+    overlay.addColorStop(0.53, 'rgba(6, 10, 18, 0.58)');
+    overlay.addColorStop(1, 'rgba(6, 10, 18, 0.82)');
+    ctx.fillStyle = overlay;
+    ctx.fillRect(0, 0, width, height);
+  } else {
+    // Fallback gradient for headless tests and pre-load state
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+    bgGrad.addColorStop(0, '#1e2430');
+    bgGrad.addColorStop(0.53, '#252d3d');
+    bgGrad.addColorStop(0.53, '#1a1f29');
+    bgGrad.addColorStop(1, '#11141c');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  // 2. Subtle arena background pillars / grid
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
   ctx.lineWidth = 1;
   for (let x = 40; x < width; x += 80) {
